@@ -1,10 +1,14 @@
-// fritzbox-ereignisse-card.js - v0.1.0
+// fritzbox-ereignisse-card.js - v0.3.0
 //
 // Lovelace-Karte für die fritzbox_ereignisse-Integration: zeigt das
 // FRITZ!Box-Ereignisprotokoll (sensor.fritzbox_ereignisse_ereignisse,
 // Attribut "events") als filterbare, durchsuchbare Liste - mit Tabs je
-// Kategorie ("Gruppe", z. B. System/Internet/Telefonie/WLAN, siehe
-// const.py:EVENT_GROUP_LABELS in der Integration) und einer Volltextsuche.
+// Kategorie ("Gruppe", z. B. System/Internetverbindung/Telefonie/WLAN/
+// USB-Geräte, siehe const.py:EVENT_GROUP_LABELS in der Integration) und
+// einer Volltextsuche. Seit v0.3.0 liefert auch der Text-Rückfall
+// (source: "text") dank serverseitiger Text-Heuristik oft schon
+// Kategorien - der "keine Kategorien"-Hinweis unten prüft daher direkt
+// die tatsächlichen Gruppen der Ereignisse, nicht mehr nur "source".
 //
 // Struktur/Konventionen bewusst an fritzbox-anrufe-card.js angelehnt (siehe
 // dortige, ausführlichere Moduldoku): persistente Shadow-Root-Kindknoten
@@ -353,10 +357,19 @@ class FritzboxEreignisseCard extends HTMLElement {
 
     this._renderTabs();
 
-    if (state.attributes.source === "text") {
+    // v0.3.0: die Text-Heuristik (siehe Integration, events.py) liefert
+    // inzwischen auch ohne native Kategorie oft brauchbare Kategorien -
+    // "source: text" allein bedeutet also nicht mehr zwangsläufig "keine
+    // Kategorien". Der Hinweis erscheint daher jetzt nur noch, wenn es
+    // tatsächlich Ereignisse gibt, aber ausnahmslos ALLE unter
+    // "Sonstiges" landen.
+    const events = this._events();
+    const allUncategorized =
+      events.length > 0 && events.every((event) => (event.group || "sonstiges") === "sonstiges");
+    if (allUncategorized) {
       this._noteEl.style.display = "flex";
       this._noteEl.innerHTML =
-        '<ha-icon icon="mdi:information-outline"></ha-icon><span>Diese FRITZ!OS-Version liefert keine Kategorien – alle Ereignisse erscheinen als "Sonstiges".</span>';
+        '<ha-icon icon="mdi:information-outline"></ha-icon><span>Für diese Ereignisse konnte keine Kategorie ermittelt werden – alle erscheinen als "Sonstiges".</span>';
     } else {
       this._noteEl.style.display = "none";
       this._noteEl.textContent = "";

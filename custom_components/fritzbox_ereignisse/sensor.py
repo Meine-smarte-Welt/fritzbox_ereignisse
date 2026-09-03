@@ -76,9 +76,14 @@ class FritzBoxEreignisseSensor(CoordinatorEntity[FritzEventsCoordinator], Sensor
         return {
             "events": events,
             "groups": groups,
-            # Diagnose (siehe events.py-Moduldoku): "xml" = vollständiges,
-            # kategorisiertes Protokoll (X_AVM-DE_GetDeviceLogPath), "text" =
-            # älterer Rückfall ohne Kategorie (GetDeviceLog). None, solange
-            # noch kein erfolgreicher Abruf stattgefunden hat.
+            # Diagnose (siehe events.py-Moduldoku): "query" (seit v0.3.0) =
+            # dieselbe interne Abfrage wie die Weboberfläche selbst
+            # (query.lua), "xml" = vollständiges Protokoll via TR-064
+            # (X_AVM-DE_GetDeviceLogPath), "text" = älterer TR-064-Rückfall
+            # (GetDeviceLog). Seit v0.3.0 sind auch bei "text" dank
+            # Text-Heuristik oft schon Kategorien vorhanden (siehe
+            # events.py:_classify_message_group) - "text" heißt nicht mehr
+            # zwangsläufig "keine Kategorien". None, solange noch kein
+            # erfolgreicher Abruf stattgefunden hat.
             "source": self.coordinator.last_source,
         }

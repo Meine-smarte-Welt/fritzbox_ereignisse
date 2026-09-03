@@ -5,11 +5,12 @@ Home-Assistant-Integration (Custom Component), die das FRITZ!Box-eigene
 als Sensor mit Dashboard-Karte in Home Assistant anzeigt - Schwester-
 Integration zu [FRITZ!Box Anrufe](https://github.com/Meine-smarte-Welt/fritzbox_anrufe).
 
-**Status: v0.2.0.** Die Abfrage nutzt zwei dokumentierte, aber an dieser
-Stelle noch NICHT vollständig gegen echte FRITZ!Box-Hardware verifizierte
-TR-064-Wege (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)).
-Rückmeldungen (insbesondere FRITZ!OS-Version + ob Kategorien angezeigt
-werden) sind als GitHub-Issue willkommen.
+**Status: v0.3.0.** Die Abfrage versucht der Reihe nach drei Wege, von
+denen keiner an dieser Stelle vollständig gegen echte FRITZ!Box-Hardware
+verifiziert ist (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)).
+Rückmeldungen (insbesondere FRITZ!OS-Version + welcher Wert im
+`source`-Attribut steht + ob Kategorien angezeigt werden) sind als
+GitHub-Issue willkommen.
 
 ## Voraussetzungen
 
@@ -69,7 +70,7 @@ Es wird ein Sensor `sensor.fritzbox_ereignisse_ereignisse` angelegt:
 | --- | --- | --- |
 | Anzahl gespeicherter Ereignisse | `events` | Liste aller Ereignisse (siehe unten) |
 | | `groups` | Liste der im aktuellen Abruf vorkommenden Kategorie-Kürzel |
-| | `source` | `xml` (vollständiges, kategorisiertes Protokoll) oder `text` (älterer Rückfall ohne Kategorie) |
+| | `source` | `query` (seit v0.3.0, dieselbe interne Abfrage wie die Weboberfläche selbst), `xml` (vollständiges Protokoll via TR-064) oder `text` (älterer TR-064-Rückfall) - siehe [Bekannte Einschränkungen](#bekannte-einschränkungen) |
 
 Jeder Eintrag in `events` ist ein Objekt mit:
 
@@ -108,9 +109,10 @@ max_rows: 15
 
 Die Karte zeigt Reiter je Kategorie (mit Anzahl je Kategorie, "Alle"
 zuerst), ein Suchfeld für den Meldungstext sowie die gefilterte Liste
-(neueste zuerst). Liefert die FRITZ!OS-Version keine Kategorien (Rückfall
-`GetDeviceLog`, siehe unten), erscheint ein Hinweis in der Karte, und alle
-Einträge werden unter "Sonstiges" geführt.
+(neueste zuerst). Kann für keinen einzigen Eintrag eine Kategorie ermittelt
+werden (weder von der FRITZ!Box selbst noch über die seit v0.3.0
+integrierte Text-Heuristik, siehe unten), erscheint ein Hinweis in der
+Karte, und alle Einträge werden unter "Sonstiges" geführt.
 
 ## Einstellungen
 
@@ -122,32 +124,49 @@ werden.
 
 ## Bekannte Einschränkungen
 
-- **Zwei TR-064-Wege.** Die Integration versucht zuerst
-  `X_AVM-DE_GetDeviceLogPath` (FRITZ!OS 7.90+, liefert das vollständige,
-  kategorisierte Protokoll als XML), und fällt bei Fehlschlag auf das
-  ältere `GetDeviceLog` zurück (liefert nur eine flache Textliste ohne
-  Kategorie - laut Community-Berichten fehlen hier sogar einzelne
-  Eintragstypen, z. B. fehlgeschlagene Anmeldeversuche). Beide Aktionen
-  sind öffentlich dokumentiert bzw. durch Community-Referenzen belegt
-  (siehe Quellcode-Kommentare in `events.py`); Weg 1 wurde inzwischen
-  durch eine reale Nutzerrückmeldung (siehe
-  [Versionshistorie](#versionshistorie), v0.2.0) bestätigt tatsächlich
-  Daten zu liefern, Weg 2 bleibt bisher unbestätigt. Schlagen beide Wege
-  fehl, wird der Sensor "nicht verfügbar" - bitte mit FRITZ!OS-Version als
-  GitHub-Issue melden.
+- **Drei Abrufwege.** Die Integration versucht der Reihe nach: (0, seit
+  v0.3.0, EXPERIMENTELL) `query.lua` - dieselbe sitzungsbasierte,
+  interne Abfrage, die auch die FRITZ!Box-Weboberfläche selbst für
+  "System > Ereignisse" verwendet; (1) `X_AVM-DE_GetDeviceLogPath`
+  (FRITZ!OS 7.90+, TR-064, liefert das vollständige Protokoll als XML);
+  (2) das ältere `GetDeviceLog` (TR-064, liefert nur eine flache
+  Textliste ohne native Kategorie - laut Community-Berichten fehlen hier
+  sogar einzelne Eintragstypen, z. B. fehlgeschlagene Anmeldeversuche).
+  Alle drei Wege sind durch Community-Referenzen belegt (siehe
+  Quellcode-Kommentare in `events.py`); Weg 1 wurde durch eine reale
+  Nutzerrückmeldung (siehe [Versionshistorie](#versionshistorie), v0.2.0)
+  bestätigt grundsätzlich Daten liefern zu können, Weg 0 und Weg 2 bleiben
+  bisher unbestätigt. Ein zweiter Nutzerbericht (v0.3.0) legt nahe, dass
+  Weg 1 nicht auf jeder FRITZ!Box/Firmware funktioniert und dann
+  stillschweigend auf Weg 2 zurückgefallen wird (erkennbar am
+  `source`-Attribut, siehe [Sensor](#sensor)) - Weg 0 wurde genau dafür
+  ergänzt. Schlagen alle drei Wege fehl, wird der Sensor "nicht
+  verfügbar" - bitte mit FRITZ!OS-Version als GitHub-Issue melden.
+- **`query.lua` ist ein undokumentierter, interner Endpunkt.** Weg 0
+  nutzt denselben Mechanismus, den auch die FRITZ!Box-Weboberfläche
+  selbst verwendet, ist aber von AVM nicht öffentlich als stabile
+  Schnittstelle dokumentiert und kann sich mit einem Firmware-Update
+  jederzeit ändern oder ganz entfallen - schlägt er fehl, greift
+  automatisch Weg 1 bzw. Weg 2, kein Fehlerfall.
 - **Devicelog-XML kann leicht fehlerhaft sein.** Manche FRITZ!OS-Stände
   liefern bei `X_AVM-DE_GetDeviceLogPath` XML, das einen nicht escapten
   bloßen `&` in einem Meldungstext oder ein laut XML 1.0 ungültiges
   Steuerzeichen enthält. Seit v0.2.0 unternimmt die Integration hierfür
   automatisch einen Reparaturversuch (siehe Versionshistorie); schlägt
-  auch dieser fehl, greift automatisch der textbasierte Rückfall
-  (`GetDeviceLog`) - kein Fehlerfall, nur mit weniger Details (keine
-  Kategorien).
-- **Kategorie-Bezeichnungen sind eine Vermutung.** Welche Kürzel
-  (`sys`/`internet`/`tel`/...) eine reale FRITZ!Box tatsächlich liefert,
-  konnte in dieser Entwicklungsumgebung nicht gegen Hardware geprüft
-  werden - ein unbekanntes Kürzel wird nie verworfen, sondern lediglich
-  unübersetzt (großgeschrieben) angezeigt.
+  auch dieser fehl, greift automatisch der nächste Weg - kein Fehlerfall.
+- **Kategorien sind teils eine Vermutung.** Von der FRITZ!Box selbst
+  gelieferte Kürzel (`sys`/`internet`/`tel`/...) werden übernommen; ein
+  unbekanntes Kürzel wird nie verworfen, sondern lediglich unübersetzt
+  (großgeschrieben) angezeigt. Liefert die FRITZ!Box KEIN Kürzel (das
+  betrifft grundsätzlich Weg 2 und ggf. auch Weg 0/1), versucht die
+  Integration seit v0.3.0 zusätzlich, die Kategorie anhand des
+  Meldungstexts zu erraten (z. B. "Anruf"/"Anrufbeantworter" ->
+  Telefonie, "USB" -> USB-Geräte) - eine reine Texterkennung auf Basis
+  bekannter, typischer FRITZ!Box-Formulierungen, ohne Garantie auf
+  Vollständigkeit oder Richtigkeit. Wird eine Meldung falsch oder gar
+  nicht eingeordnet (dann "Sonstiges"), gerne mit dem genauen
+  Meldungstext als GitHub-Issue melden, damit sich das Mustererkennung
+  erweitern lässt.
 - **Kein Löschen/Bearbeiten.** Das FRITZ!Box-Ereignisprotokoll wird
   ausschließlich lesend abgerufen.
 
@@ -160,12 +179,24 @@ werden.
 - **Karte erscheint nach Update nicht**: Ordner
   `custom_components/fritzbox_ereignisse` komplett neu installieren, Home
   Assistant vollständig neu starten, Browser-Cache leeren (Strg+Shift+R).
-- **Alle Ereignisse ohne Kategorie ("Sonstiges")**: die FRITZ!OS-Version
-  liefert vermutlich `X_AVM-DE_GetDeviceLogPath` nicht - die Integration
-  läuft dann im textbasierten Rückfall (siehe
-  [Bekannte Einschränkungen](#bekannte-einschränkungen)). Kein Fehler,
-  aber gerne mit FRITZ!OS-Version als GitHub-Issue melden, damit sich die
-  Verbreitung einschätzen lässt.
+- **Alle Ereignisse ohne Kategorie ("Sonstiges")**: seit v0.3.0 eher
+  selten, da drei Abrufwege UND eine Text-Heuristik zusammenspielen
+  (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)). Prüfen,
+  welcher Wert im `source`-Attribut des Sensors steht (Entwicklertools ->
+  Zustände): steht dort `text`, liefert diese FRITZ!Box/Firmware
+  vermutlich weder `query.lua` noch `X_AVM-DE_GetDeviceLogPath` nutzbar,
+  und die Text-Heuristik konnte für die vorhandenen Meldungen keine
+  Kategorie erraten. Kein Fehler, aber gerne mit FRITZ!OS-Version und
+  ein paar Beispiel-Meldungstexten als GitHub-Issue melden.
+- **Ereignisse in der Karte sind älter als in der echten
+  FRITZ!Box-Oberfläche** (behoben in v0.3.0, siehe Versionshistorie):
+  trat auf, wenn Weg 1 auf der jeweiligen FRITZ!Box/Firmware nicht
+  funktionierte und der textbasierte Rückfall (`GetDeviceLog`) bestimmte,
+  neuere Eintragstypen gar nicht liefert. Auf Version 0.3.0 oder neuer
+  aktualisieren und die Integration neu laden - der neue Weg 0
+  (`query.lua`) nutzt dieselbe Abfrage wie die FRITZ!Box-Weboberfläche
+  selbst und sollte daher tagesaktuelle Daten liefern, sofern die eigene
+  FRITZ!Box/Firmware diesen Weg unterstützt.
 - **Einrichtungsfehler "not well-formed (invalid token): line X, column Y"**
   (behoben in v0.2.0): trat auf, wenn das devicelog-XML einen nicht
   escapten `&` oder ein ungültiges Steuerzeichen enthielt - siehe
@@ -178,6 +209,33 @@ werden.
 
 ## Versionshistorie
 
+- **0.3.0**: Ein Nutzer verglich die Karte direkt mit der echten
+  FRITZ!Box-Weboberfläche und meldete zwei Probleme: (1) die Karte zeigte
+  nur die Kategorie "Sonstiges" statt der auf der Box sichtbaren Reiter
+  Telefonie/Internetverbindung/USB-Geräte/WLAN/System, und (2) der
+  neueste Eintrag in der Karte war mehrere Stunden älter als in der
+  echten Oberfläche. Diagnose: das `source`-Attribut des Sensors stand
+  bei diesem Nutzer auf `text` - `X_AVM-DE_GetDeviceLogPath` (Weg 1)
+  funktioniert auf dieser FRITZ!Box/Firmware also nicht, und der dann
+  laufende textbasierte Rückfall (`GetDeviceLog`, Weg 2) kennt weder
+  Kategorien noch liefert er zuverlässig jeden neueren Eintragstyp -
+  beide gemeldeten Symptome hatten dieselbe Ursache. Zwei voneinander
+  unabhängige Korrekturen: (1) ein neuer, jetzt zuerst versuchter Weg 0
+  (`query.lua`, EXPERIMENTELL) - dieselbe interne, sitzungsbasierte
+  Abfrage, die auch die FRITZ!Box-Weboberfläche selbst zum Befüllen von
+  "System > Ereignisse" nutzt, und damit der plausibelste Weg zu
+  tagesaktuellen, vollständigen Daten; (2) eine Text-Heuristik, die
+  unabhängig vom Abrufweg versucht, aus dem Meldungstext eine der
+  bekannten Kategorien zu erraten, falls die FRITZ!Box selbst keine
+  liefert - das behebt "alles landet unter Sonstiges" auch dann, wenn
+  Weg 0 sich auf einer bestimmten Hardware als nicht unterstützt
+  herausstellt und weiterhin nur der Text-Rückfall läuft. Kategorie-
+  Bezeichnungen zusätzlich an die tatsächliche FRITZ!Box-Oberfläche
+  angeglichen ("Internetverbindung" statt "Internet", "USB-Geräte" statt
+  "USB / Speicher"). Wie bei Weg 1 zuvor: rein defensiv abgesichert -
+  schlägt Weg 0 fehl (fehlende Anmeldung, unerwartetes Antwortformat,
+  von der Firmware nicht unterstützt, ...), fällt die Integration
+  automatisch auf Weg 1 bzw. Weg 2 zurück, nie ein Absturz.
 - **0.2.0**: Fix für einen dauerhaften Einrichtungsfehler
   (`not well-formed (invalid token)`), gemeldet von einem Nutzer direkt
   nach der Ersteinrichtung. Ursache: `X_AVM-DE_GetDeviceLogPath` lieferte

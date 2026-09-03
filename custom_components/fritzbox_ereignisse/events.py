@@ -1,11 +1,21 @@
-"""Fetch + parse the FRITZ!Box event log ("Ereignisse") via TR-064.
+"""Fetch + parse the FRITZ!Box event log ("Ereignisse").
 
-Es gibt zwei dokumentierte TR-064-Wege zum selben Protokoll, das die
-FRITZ!Box-Oberfläche unter System > Ereignisse anzeigt - beide im ohnehin
-schon von fritzbox_anrufe genutzten Basisdienst ``DeviceInfo:1``, keine
-zusätzliche Kontoberechtigung nötig:
+Es gibt inzwischen DREI Wege zum selben Protokoll, das die FRITZ!Box-
+Oberfläche unter System > Ereignisse anzeigt:
 
-1. ``X_AVM-DE_GetDeviceLogPath`` (FRITZ!OS 7.90+, bevorzugt): liefert einen
+0. ``query.lua`` (seit v0.3.0, EXPERIMENTELL, bevorzugt): dieselbe
+   sitzungsbasierte ("sid") Web-UI-interne Abfrage, die die FRITZ!Box-
+   Oberfläche SELBST verwendet, um die Ereignisse-Seite live zu befüllen -
+   ``mq_log=logger:status/log_separate/list(time,msg,ref,type)`` gegen
+   ``/query.lua``. Community-Referenz: ip-phone-forum.de, Thread "Abfrage
+   von query.lua und data.lua mit OS Version 07.27". Kein TR-064-SOAP;
+   Anmeldung/Session über ``FritzHttp._get_sid()``/``call_url()``
+   (fritzconnection bringt diesen Baustein bereits mit - identisches
+   Prinzip wie der Anrufbeantworter-Audio-Download in fritzbox_anrufe's
+   ``tam.py`` bzw. dessen ``settings_data.py``). Da dies exakt die
+   Abfrage ist, die auch die Live-Ansicht der Weboberfläche befüllt, ist
+   dies der Weg mit der größten Chance auf tagesaktuelle Daten.
+1. ``X_AVM-DE_GetDeviceLogPath`` (FRITZ!OS 7.90+, TR-064): liefert einen
    Web-UI-Pfad (inkl. sid) zu einer XML-Datei mit STRUKTURIERTEN Einträgen
    (``id``/``group``/``date``/``time``/``msg``) - das vollständige
    Protokoll inkl. Kategorie, exakt wie in der FRITZ!Box-Oberfläche.
@@ -22,12 +32,15 @@ zusätzliche Kontoberechtigung nötig:
    Eintragstypen (z. B. fehlgeschlagene Anmeldeversuche). Reines
    TR-064-SOAP, kein zweiter HTTP-Request nötig.
 
-Beide Wege werden defensiv nacheinander versucht (Weg 1 zuerst, da
-vollständiger); erst wenn BEIDE fehlschlagen, meldet der Coordinator
-``UpdateFailed`` - identisches Prinzip wie ``settings_data.py`` in
-fritzbox_anrufe. NICHT an echter Hardware verifiziert (siehe README) - noch
-unbekannt, welcher FRITZ!OS-Mindeststand/welche Kontoberechtigung in der
-Praxis tatsächlich reicht.
+Alle drei Wege werden defensiv nacheinander versucht (Weg 0 zuerst, dann
+Weg 1, dann Weg 2); erst wenn ALLE DREI fehlschlagen, meldet der
+Coordinator ``UpdateFailed`` - identisches Prinzip wie ``settings_data.py``
+in fritzbox_anrufe. KEINER der drei Wege ist an echter Hardware
+vollständig verifiziert (siehe README) - noch unbekannt, welcher
+FRITZ!OS-Mindeststand/welche Kontoberechtigung in der Praxis tatsächlich
+reicht bzw. ob AVM ``query.lua`` auf allen Modellen/Firmwareständen
+unverändert bereitstellt (ein undokumentierter, interner Endpunkt, der
+sich jederzeit ändern kann).
 
 Fix in v0.2.0 - Einrichtungsfehler "not well-formed (invalid token)"
 ---------------------------------------------------------------------
@@ -62,6 +75,51 @@ anzunehmen). Zwei Korrekturen:
    bringen - identisches Prinzip wie die durchgehend breiten
    `except Exception`-Blöcke in fritzbox_anrufe's ``settings_data.py`` für
    dessen ebenfalls unbestätigte data.lua-Wege.
+
+Fix/Feature in v0.3.0 - fehlende Kategorien + veraltete Daten
+---------------------------------------------------------------------
+Ein Nutzer verglich die Karte direkt mit der echten FRITZ!Box-
+Weboberfläche (Screenshots) und meldete zwei Probleme: (1) die Karte zeigt
+ausschließlich "Sonstiges" statt der auf der Box sichtbaren Reiter
+Telefonie/Internetverbindung/USB-Geräte/WLAN/System, und (2) der neueste
+Eintrag in der Karte war zum Zeitpunkt des Vergleichs mehrere Stunden
+älter als der neueste Eintrag in der echten Weboberfläche. Diagnose (aus
+dem Sensor-Attribut ``source``, das beim Nutzer "text" war): Weg 1
+(``X_AVM-DE_GetDeviceLogPath``) schlägt auf dieser FRITZ!Box/Firmware aus
+unbekanntem Grund fehl (kein FRITZ!OS 7.90+, andere Kontoberechtigung
+nötig, o. ä. - der breite ``except Exception`` aus dem v0.2.0-Fix
+verschluckt den genauen Grund bewusst, siehe oben), sodass ausschließlich
+der Text-Rückfall (Weg 2, ``GetDeviceLog``) lief - und dessen bereits in
+den "Bekannten Einschränkungen" dokumentierte Lücke (fehlende
+Eintragstypen) erklärt beide Symptome zugleich: keine Kategorien (der
+Text-Rückfall kennt grundsätzlich keine Kategorie) UND scheinbar
+veraltete Daten (wenn ``GetDeviceLog`` bestimmte, neuere Eintragstypen
+schlicht nie liefert, wirkt der zuletzt sichtbare Eintrag eines
+gelieferten Typs "alt", obwohl die Box selbst längst neuere - andersartige
+- Einträge kennt). Zwei Korrekturen, unabhängig voneinander wirksam:
+
+1. **Neuer Weg 0** (``_fetch_via_query_log()``, ``query.lua``, siehe oben)
+   - wird jetzt VOR Weg 1 versucht. Da dies exakt dieselbe Abfrage ist,
+   die auch die Live-Ansicht der echten Weboberfläche (das Vergleichsbild
+   des Nutzers) befüllt, ist dies der plausibelste Weg zu tagesaktuellen,
+   vollständigen Daten - aber ein undokumentierter interner Endpunkt,
+   daher weiterhin EXPERIMENTELL und mit dem gleichen breiten
+   ``except Exception``-Rückfallprinzip abgesichert wie Weg 1.
+2. **Text-Heuristik für Kategorien** (``_classify_message_group()``,
+   ``_derive_group()``): unabhängig davon, ÜBER WELCHEN Weg ein Ereignis
+   ankommt, wird - falls die Box selbst kein (oder ein leeres) Gruppen-
+   Kürzel liefert (das betrifft IMMER Weg 2, und ggf. auch Weg 0/1, falls
+   deren Felder anders benannt sind als erwartet) - der Meldungstext
+   gegen bekannte, typische FRITZ!Box-Formulierungen (deutsch) geprüft und
+   einer der Kategorien aus ``EVENT_GROUP_LABELS`` zugeordnet (z. B.
+   "Anruf"/"Anrufbeantworter" -> Telefonie, "USB" -> USB-Geräte,
+   "Internetverbindung"/"DSL-Synchronisierung" -> Internetverbindung).
+   Das behebt "alles landet unter Sonstiges" AUCH dann, wenn Weg 0 sich
+   als auf dieser Hardware nicht unterstützt herausstellt und weiterhin
+   nur der Text-Rückfall läuft. Rein heuristisch (Best-Effort) - eine
+   unbekannte/nicht erkannte Formulierung landet weiterhin unter
+   "Sonstiges", nie falsch verworfen; ein von der Box selbst geliefertes
+   Gruppen-Kürzel (Weg 1) hat immer Vorrang vor der Heuristik.
 """
 
 from __future__ import annotations
@@ -71,6 +129,7 @@ from datetime import datetime, timedelta
 import hashlib
 import logging
 import re
+from typing import Final
 from urllib.parse import urljoin
 from xml.etree.ElementTree import Element, ParseError, fromstring
 
@@ -94,6 +153,8 @@ from .const import (
     EVENT_GROUP_LABELS,
     EVENT_GROUP_UNKNOWN,
     EVENT_NEW_EREIGNIS,
+    MQ_LOG_SEPARATE_ALL,
+    QUERY_LUA_PATH,
     SERVICE_DEVICE_INFO,
 )
 
@@ -120,6 +181,74 @@ _INVALID_XML_CHARS_RE = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 # Ein "&", dem kein gültiger Entity-/Zeichenverweis folgt (&amp; &lt; &gt;
 # &quot; &apos; &#123; &#x1F;) ist in XML nicht erlaubt - wird escapt.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9A-Fa-f]+;)")
+
+# v0.3.0 - Text-Heuristik für Kategorien (siehe Moduldoku, "Fix/Feature in
+# v0.3.0"): reihenfolgeabhängige Liste aus (Gruppen-Kürzel, [Muster]) -
+# das erste passende Muster gewinnt, daher stehen spezifischere Kategorien
+# vor generischeren (z. B. "tel"/"dect"/"wlan"/"usb" vor dem breiten
+# "system"-Auffangbecken). Bewusst NUR auf typische, wiederkehrende
+# FRITZ!Box-Formulierungen (deutsch) gestützt - keine Garantie auf
+# Vollständigkeit, siehe README "Bekannte Einschränkungen". Ein Treffer
+# hier wird NUR verwendet, wenn die Box selbst kein Gruppen-Kürzel
+# geliefert hat (siehe _derive_group) - ein von der Box geliefertes
+# Kürzel hat immer Vorrang.
+_MESSAGE_GROUP_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
+    (group, re.compile(pattern, re.IGNORECASE))
+    for group, pattern in (
+        (
+            "tel",
+            r"anruf\w*|anrufbeantworter|telefonanlage|telefonie|rufumleitung|"
+            r"rufnummer|faxnachricht|\bsip\b|\bvoip\b",
+        ),
+        ("dect", r"\bdect\b|mobilteil"),
+        ("wlan", r"\bwlan\b|wpa[2-3]?[- ]?(psk|schlüssel)?"),
+        ("usb", r"\busb\b|massenspeicher"),
+        (
+            "internet",
+            r"internetverbindung|dsl[- ]?synchronisierung|\bppp\b|"
+            r"online-zähler|zwangstrennung|internetzugang|\bipv[46]\b",
+        ),
+        ("vpn", r"\bvpn\b"),
+        ("smarthome", r"smart[- ]?home|schaltsteckdose|thermostat|heizk\w*regler"),
+        ("network", r"heimnetz|\bmesh\b|repeater|ip-adresse"),
+        (
+            "sys",
+            r"firmware|neu gestartet|neustart|systemzeit|zeitzone|"
+            r"kindersicherung|anmeldung\w*\s*fehlgeschlagen|benutzerkonto|"
+            r"passwort|update|energiesparfunktion",
+        ),
+    )
+)
+
+
+def _classify_message_group(message: str) -> str | None:
+    """Best-effort-Kategorie anhand des Meldungstexts (siehe oben).
+
+    Reines Muster-Matching, kein Aufruf an die FRITZ!Box - daher ohne
+    Hardware testbar und ohne jedes Risiko für den Abrufpfad selbst.
+    ``None``, wenn keines der bekannten Muster passt (bleibt dann
+    "Sonstiges", wie schon vor v0.3.0).
+    """
+    if not message:
+        return None
+    for group, pattern in _MESSAGE_GROUP_PATTERNS:
+        if pattern.search(message):
+            return group
+    return None
+
+
+def _derive_group(explicit_group: str | None, message: str) -> str:
+    """Gruppen-Kürzel: von der Box geliefertes Kürzel hat Vorrang.
+
+    Fehlt es (leer/``None`` - insb. immer bei Weg 2, ggf. auch bei Weg 0/1),
+    wird die Text-Heuristik versucht; schlägt auch die fehl, bleibt es bei
+    :data:`EVENT_GROUP_UNKNOWN` ("Sonstiges") - identisches Verhalten wie
+    vor v0.3.0, nur mit einer zusätzlichen Chance auf eine echte Kategorie.
+    """
+    explicit = (explicit_group or "").strip().lower()
+    if explicit:
+        return explicit
+    return _classify_message_group(message) or EVENT_GROUP_UNKNOWN
 
 
 @dataclass
@@ -160,7 +289,7 @@ class FritzEvent:
         field blank/derived.
         """
         message = fields.get("msg") or fields.get("message") or ""
-        group = (fields.get("group") or EVENT_GROUP_UNKNOWN).strip().lower() or EVENT_GROUP_UNKNOWN
+        group = _derive_group(fields.get("group"), message)
         date_part = (fields.get("date") or "").strip()
         time_part = (fields.get("time") or "").strip()
         raw_date = f"{date_part} {time_part}".strip()
@@ -190,7 +319,36 @@ class FritzEvent:
             message = line[_TEXT_LINE_PREFIX_LEN:].strip()
         return cls(
             id=_synthetic_id(raw_date or line, message),
-            group=EVENT_GROUP_UNKNOWN,
+            # v0.3.0: kein natives Gruppen-Kürzel auf diesem Weg - siehe
+            # ob die Text-Heuristik (_derive_group) trotzdem eine Kategorie
+            # erkennt, statt hier hart EVENT_GROUP_UNKNOWN zu setzen.
+            group=_derive_group(None, message),
+            timestamp=timestamp,
+            raw_date=raw_date,
+            message=message,
+        )
+
+    @classmethod
+    def from_query_fields(cls, fields: dict[str, object]) -> FritzEvent:
+        """Build from one ``query.lua``/``log_separate``-Eintrag (Weg 0, v0.3.0).
+
+        Erwartete Feldnamen laut Community-Referenz (siehe Moduldoku):
+        ``time``/``msg``/``ref``/``type``. ``type`` wird BEWUSST NICHT als
+        Gruppen-Kürzel übernommen - seine Bedeutung/Werte-Zuordnung ist
+        nicht verlässlich dokumentiert, ein falsch geratenes Mapping wäre
+        schlimmer als gar keine Kategorie (siehe Moduldoku). Stattdessen
+        läuft auch hier die Text-Heuristik über ``_derive_group``. ``ref``
+        wird - falls vorhanden - als stabile Kennung verwendet (identisches
+        Prinzip wie ``id`` bei Weg 1).
+        """
+        message = str(fields.get("msg") or fields.get("message") or "").strip()
+        raw_date = str(fields.get("time") or fields.get("date") or "").strip()
+        timestamp = _parse_query_datetime(raw_date)
+        ref = str(fields.get("ref") or "").strip()
+        group = _derive_group(None, message)
+        return cls(
+            id=ref or _synthetic_id(raw_date or message, message),
+            group=group,
             timestamp=timestamp,
             raw_date=raw_date,
             message=message,
@@ -205,6 +363,27 @@ def _parse_datetime(date_part: str, time_part: str) -> datetime | None:
     for fmt in (_DATETIME_FORMAT, "%d.%m.%y"):
         try:
             return datetime.strptime(combined, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_query_datetime(raw: str) -> datetime | None:
+    """Parse the ``query.lua``/Weg-0 ``time``-Feld (v0.3.0).
+
+    Community-Beispiele zeigen dasselbe Format wie ``GetDeviceLog``
+    (``DD.MM.YY HH:MM:SS``) - wird zuerst versucht, danach defensiv ein
+    paar naheliegende Varianten. Unparsbares wird nie verworfen: der
+    Eintrag bleibt über ``raw_date`` trotzdem vollständig sichtbar (siehe
+    :meth:`FritzEvent.from_query_fields`), nur ohne sortierbaren
+    Zeitstempel.
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+    for fmt in (_DATETIME_FORMAT, "%d.%m.%Y %H:%M:%S", "%d.%m.%y"):
+        try:
+            return datetime.strptime(raw, fmt)
         except ValueError:
             continue
     return None
@@ -239,6 +418,7 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         self._device = device
         # Welcher Weg beim letzten erfolgreichen Abruf funktioniert hat -
         # von sensor.py als Diagnose-Attribut mit ausgegeben (siehe dort).
+        # "query" (Weg 0, seit v0.3.0) / "xml" (Weg 1) / "text" (Weg 2).
         self.last_source: str | None = None
         # None bis zum ersten erfolgreichen Abruf - siehe _fire_new_events
         # für den Grund, warum dann bewusst NICHTS gefeuert wird.
@@ -263,15 +443,33 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         return events
 
     def _fetch(self) -> list[FritzEvent]:
-        """Try the structured XML path first, then the plain-text fallback.
+        """Try query.lua, then the structured XML path, then plain text.
 
         BLOCKING - run in an executor job. Returns whichever path succeeds
-        first; only raises once BOTH have failed, mirroring
+        first; only raises once ALL THREE have failed, mirroring
         ``settings_data.py``'s "never fail unless everything fails"
         philosophy in fritzbox_anrufe - except here the event log IS this
         integration's only sensor, so - unlike that optional add-on sensor -
         a combined failure legitimately marks the entity unavailable.
         """
+        try:
+            events = self._fetch_via_query_log()
+            if events is not None:
+                self.last_source = "query"
+                return events
+        except Exception as ex:  # noqa: BLE001 - Weg 0 ist ein
+            # undokumentierter, interner Endpunkt (siehe Moduldoku,
+            # "Fix/Feature in v0.3.0") - JEDER Fehler hier (fehlende
+            # Anmeldung, unerwartetes/nicht-JSON-Antwortformat, blockierter
+            # Endpunkt auf dieser Firmware, ...) darf nur den Rückfall auf
+            # Weg 1 auslösen, nie das gesamte Setup zum Absturz bringen.
+            _LOGGER.debug(
+                "Ereignisse: query.lua fehlgeschlagen (%s: %s), versuche"
+                " X_AVM-DE_GetDeviceLogPath als Rückfall",
+                type(ex).__name__,
+                ex,
+            )
+
         try:
             events = self._fetch_via_log_path()
             if events is not None:
@@ -295,6 +493,33 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         events = self._fetch_via_plain_log()
         self.last_source = "text"
         return events
+
+    def _fetch_via_query_log(self) -> list[FritzEvent] | None:
+        """Weg 0 (v0.3.0, EXPERIMENTELL): dieselbe Abfrage wie die Weboberfläche.
+
+        ``None`` (statt eine leere Liste), wenn die Antwort keine
+        erkennbare Eintragsliste enthält - signalisiert dem Aufrufer
+        "dieser Weg ist auf dieser Box (so) nicht nutzbar", genau wie
+        :meth:`_fetch_via_log_path` es für Weg 1 tut, statt fälschlich
+        "0 Ereignisse" zu melden.
+        """
+        fc = self._device.fc
+        assert fc is not None
+        http = FritzHttp(fc)
+        url = f"{http.router_url}{QUERY_LUA_PATH}"
+        response = http.call_url(url, {"mq_log": MQ_LOG_SEPARATE_ALL})
+        payload = response.json()
+        entries = _find_log_entries(payload)
+        if entries is None:
+            _LOGGER.debug(
+                "Ereignisse: query.lua-Antwort ohne erkennbare Eintragsliste"
+                " (Antwort-Schlüssel: %s)",
+                sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__,
+            )
+            return None
+        return [
+            FritzEvent.from_query_fields(entry) for entry in entries if isinstance(entry, dict)
+        ]
 
     def _fetch_via_log_path(self) -> list[FritzEvent] | None:
         """Structured XML path (FRITZ!OS 7.90+). ``None`` if unsupported."""
@@ -385,6 +610,43 @@ def _extract_log_path(result: dict[str, object]) -> str | None:
     for value in result.values():
         if isinstance(value, str) and value.strip().startswith("/"):
             return value.strip()
+    return None
+
+
+def _find_log_entries(payload: object, _depth: int = 0) -> list[dict] | None:
+    """Recursively locate the list of log entries in a query.lua response.
+
+    Weg 0 (v0.3.0) ist ein undokumentierter Endpunkt - die genaue
+    Verschachtelungstiefe der JSON-Antwort (z. B. ``{"mq_log": {"data":
+    {"log_separate": {"list": [...]}}}}`` oder etwas flacheres) ist ohne
+    echte Hardware nicht verifizierbar. Statt einen einzigen, geratenen
+    Pfad hart zu verdrahten, wird die Antwort defensiv nach der ERSTEN
+    Liste durchsucht, deren Elemente wie Log-Einträge aussehen (Dicts mit
+    mindestens ``time``+``msg``, case-insensitiv) - funktioniert
+    unabhängig davon, wie tief AVM diese Liste tatsächlich verschachtelt,
+    und liefert ``None`` (nicht ``[]``), wenn nichts Passendes gefunden
+    wurde, damit der Aufrufer das von einem "0 Ereignisse" unterscheiden
+    kann. Tiefenbegrenzt (``_depth``), um bei unerwartet rekursiven/
+    zyklischen Strukturen nicht endlos zu suchen.
+    """
+    if _depth > 6:
+        return None
+    if isinstance(payload, list):
+        candidates = [item for item in payload if isinstance(item, dict)]
+        if candidates and all(
+            any(key.lower() in ("time", "date") for key in item) for item in candidates
+        ) and all(any(key.lower() in ("msg", "message") for key in item) for item in candidates):
+            return payload
+        for item in payload:
+            found = _find_log_entries(item, _depth + 1)
+            if found is not None:
+                return found
+        return None
+    if isinstance(payload, dict):
+        for value in payload.values():
+            found = _find_log_entries(value, _depth + 1)
+            if found is not None:
+                return found
     return None
 
 

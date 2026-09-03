@@ -44,21 +44,42 @@ SERVICE_DEVICE_INFO = "DeviceInfo:1"
 ACTION_GET_DEVICE_LOG_PATH = "X_AVM-DE_GetDeviceLogPath"
 ACTION_GET_DEVICE_LOG = "GetDeviceLog"
 
-# Gruppen-/Kategorie-Kürzel, wie sie im XML-Protokoll (Weg 1 oben)
-# beobachtet wurden - rein für hübschere Anzeigenamen in der Karte
-# (siehe www/fritzbox-ereignisse-card.js). Ein unbekanntes/fehlendes
-# Kürzel wird defensiv als "Allgemein" dargestellt, nie verworfen.
+# --- Web-UI-interner "query.lua"-Weg (Weg 0, seit v0.3.0, EXPERIMENTELL) ---
+#
+# Dieselbe interne Abfrage, die die FRITZ!Box-Weboberfläche selbst für
+# "System > Ereignisse" verwendet, um die dortige Liste live zu befüllen
+# (siehe events.py-Moduldoku, Abschnitt "Fix/Feature in v0.3.0", für
+# Herleitung/Quelle: u. a. ip-phone-forum.de, Thread "Abfrage von query.lua
+# und data.lua mit OS Version 07.27"). Kein TR-064-SOAP, sondern ein
+# klassischer, sitzungsbasierter (sid) Web-UI-Aufruf - identisches
+# Authentifizierungsprinzip wie fritzbox_anrufe's settings_data.py bzw. der
+# Anrufbeantworter-Audio-Download in dessen tam.py. fritzconnection bringt
+# dafür mit ``FritzHttp._get_sid()``/``FritzHttp.call_url()`` bereits einen
+# fertigen, wiederverwendbaren Baustein für die Challenge-Response-Anmeldung
+# mit - keine eigene Login-Implementierung nötig.
+QUERY_LUA_PATH = "/query.lua"
+MQ_LOG_SEPARATE_ALL = "logger:status/log_separate/list(time,msg,ref,type)"
+
+# Gruppen-/Kategorie-Kürzel, wie sie im XML-Protokoll (Weg 1) beobachtet
+# wurden, ERGÄNZT um die Kürzel, die die integrationseigene
+# Text-Heuristik (siehe events.py:_classify_message_group, seit v0.3.0)
+# vergibt - rein für hübschere Anzeigenamen in der Karte (siehe
+# www/fritzbox-ereignisse-card.js). Namen an die tatsächliche
+# FRITZ!Box-Weboberfläche angeglichen (Reiter "Telefonie" /
+# "Internetverbindung" / "USB-Geräte" / "WLAN" / "System"). Ein
+# unbekanntes/fehlendes Kürzel wird defensiv als "Allgemein" dargestellt,
+# nie verworfen.
 EVENT_GROUP_LABELS: Final[dict[str, str]] = {
     "sys": "System",
     "system": "System",
-    "internet": "Internet",
-    "dsl": "Internet",
-    "wan": "Internet",
+    "internet": "Internetverbindung",
+    "dsl": "Internetverbindung",
+    "wan": "Internetverbindung",
     "tel": "Telefonie",
     "fon": "Telefonie",
     "wlan": "WLAN",
-    "usb": "USB / Speicher",
-    "storage": "USB / Speicher",
+    "usb": "USB-Geräte",
+    "storage": "USB-Geräte",
     "vpn": "VPN",
     "dect": "DECT",
     "network": "Heimnetz",
