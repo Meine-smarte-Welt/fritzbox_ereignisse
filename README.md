@@ -5,9 +5,9 @@ Home-Assistant-Integration (Custom Component), die das FRITZ!Box-eigene
 als Sensor mit Dashboard-Karte in Home Assistant anzeigt - Schwester-
 Integration zu [FRITZ!Box Anrufe](https://github.com/Meine-smarte-Welt/fritzbox_anrufe).
 
-**Status: v0.1.0, initiale Version.** Die Abfrage nutzt zwei dokumentierte,
-aber an dieser Stelle noch NICHT gegen echte FRITZ!Box-Hardware
-verifizierte TR-064-Wege (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)).
+**Status: v0.2.0.** Die Abfrage nutzt zwei dokumentierte, aber an dieser
+Stelle noch NICHT vollständig gegen echte FRITZ!Box-Hardware verifizierte
+TR-064-Wege (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)).
 Rückmeldungen (insbesondere FRITZ!OS-Version + ob Kategorien angezeigt
 werden) sind als GitHub-Issue willkommen.
 
@@ -122,17 +122,27 @@ werden.
 
 ## Bekannte Einschränkungen
 
-- **Zwei TR-064-Wege, keiner bisher an echter Hardware bestätigt.** Die
-  Integration versucht zuerst `X_AVM-DE_GetDeviceLogPath` (FRITZ!OS 7.90+,
-  liefert das vollständige, kategorisierte Protokoll als XML), und fällt
-  bei Fehlschlag auf das ältere `GetDeviceLog` zurück (liefert nur eine
-  flache Textliste ohne Kategorie - laut Community-Berichten fehlen hier
-  sogar einzelne Eintragstypen, z. B. fehlgeschlagene Anmeldeversuche).
-  Beide Aktionen sind öffentlich dokumentiert bzw. durch
-  Community-Referenzen belegt (siehe Quellcode-Kommentare in `events.py`),
-  aber nicht unabhängig gegen die Hardware dieser Integration bestätigt.
-  Schlagen beide Wege fehl, wird der Sensor "nicht verfügbar" - bitte mit
-  FRITZ!OS-Version als GitHub-Issue melden.
+- **Zwei TR-064-Wege.** Die Integration versucht zuerst
+  `X_AVM-DE_GetDeviceLogPath` (FRITZ!OS 7.90+, liefert das vollständige,
+  kategorisierte Protokoll als XML), und fällt bei Fehlschlag auf das
+  ältere `GetDeviceLog` zurück (liefert nur eine flache Textliste ohne
+  Kategorie - laut Community-Berichten fehlen hier sogar einzelne
+  Eintragstypen, z. B. fehlgeschlagene Anmeldeversuche). Beide Aktionen
+  sind öffentlich dokumentiert bzw. durch Community-Referenzen belegt
+  (siehe Quellcode-Kommentare in `events.py`); Weg 1 wurde inzwischen
+  durch eine reale Nutzerrückmeldung (siehe
+  [Versionshistorie](#versionshistorie), v0.2.0) bestätigt tatsächlich
+  Daten zu liefern, Weg 2 bleibt bisher unbestätigt. Schlagen beide Wege
+  fehl, wird der Sensor "nicht verfügbar" - bitte mit FRITZ!OS-Version als
+  GitHub-Issue melden.
+- **Devicelog-XML kann leicht fehlerhaft sein.** Manche FRITZ!OS-Stände
+  liefern bei `X_AVM-DE_GetDeviceLogPath` XML, das einen nicht escapten
+  bloßen `&` in einem Meldungstext oder ein laut XML 1.0 ungültiges
+  Steuerzeichen enthält. Seit v0.2.0 unternimmt die Integration hierfür
+  automatisch einen Reparaturversuch (siehe Versionshistorie); schlägt
+  auch dieser fehl, greift automatisch der textbasierte Rückfall
+  (`GetDeviceLog`) - kein Fehlerfall, nur mit weniger Details (keine
+  Kategorien).
 - **Kategorie-Bezeichnungen sind eine Vermutung.** Welche Kürzel
   (`sys`/`internet`/`tel`/...) eine reale FRITZ!Box tatsächlich liefert,
   konnte in dieser Entwicklungsumgebung nicht gegen Hardware geprüft
@@ -156,3 +166,28 @@ werden.
   [Bekannte Einschränkungen](#bekannte-einschränkungen)). Kein Fehler,
   aber gerne mit FRITZ!OS-Version als GitHub-Issue melden, damit sich die
   Verbreitung einschätzen lässt.
+- **Einrichtungsfehler "not well-formed (invalid token): line X, column Y"**
+  (behoben in v0.2.0): trat auf, wenn das devicelog-XML einen nicht
+  escapten `&` oder ein ungültiges Steuerzeichen enthielt - siehe
+  [Bekannte Einschränkungen](#bekannte-einschränkungen) und
+  [Versionshistorie](#versionshistorie). Auf Version 0.2.0 oder neuer
+  aktualisieren und die Integration neu laden (Einstellungen → Geräte &
+  Dienste → FRITZ!Box Ereignisse → drei Punkte → "Neu laden" - ein
+  vollständiger Neustart ist dafür nicht nötig, nur bei einem
+  Datei-Update über HACS/manuell).
+
+## Versionshistorie
+
+- **0.2.0**: Fix für einen dauerhaften Einrichtungsfehler
+  (`not well-formed (invalid token)`), gemeldet von einem Nutzer direkt
+  nach der Ersteinrichtung. Ursache: `X_AVM-DE_GetDeviceLogPath` lieferte
+  auf dessen FRITZ!Box XML mit einem nicht escapten `&` im Meldungstext;
+  der dadurch entstehende `xml.etree.ElementTree.ParseError` wurde bislang
+  von keinem der Fehlerbehandlungspfade abgefangen und ließ das komplette
+  Setup wiederholt fehlschlagen, obwohl der textbasierte Rückfall
+  problemlos funktioniert hätte. Jetzt: (1) ein automatischer
+  Reparaturversuch für genau diese Art von XML-Fehlern (bloßer `&`
+  escapen, ungültige Steuerzeichen entfernen), (2) jeder verbleibende
+  Fehler auf diesem Weg löst zuverlässig den Rückfall auf `GetDeviceLog`
+  aus, statt das Setup abstürzen zu lassen.
+- **0.1.0**: Initiale Version.

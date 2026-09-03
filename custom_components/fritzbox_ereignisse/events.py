@@ -28,6 +28,40 @@ vollständiger); erst wenn BEIDE fehlschlagen, meldet der Coordinator
 fritzbox_anrufe. NICHT an echter Hardware verifiziert (siehe README) - noch
 unbekannt, welcher FRITZ!OS-Mindeststand/welche Kontoberechtigung in der
 Praxis tatsächlich reicht.
+
+Fix in v0.2.0 - Einrichtungsfehler "not well-formed (invalid token)"
+---------------------------------------------------------------------
+Ein Nutzer meldete einen dauerhaften Einrichtungsfehler mit genau dieser
+Meldung. Ursache: ``get_xml_root()`` (Weg 1) nutzt
+``xml.etree.ElementTree.fromstring`` - dessen ``ParseError`` ist WEDER von
+``FritzConnectionException`` NOCH von ``RequestException`` abgeleitet und
+wurde daher bislang von keinem der `except`-Blöcke aufgefangen, sondern
+propagierte ungefangen bis zum Coordinator durch und ließ das komplette
+Setup wiederholt fehlschlagen - selbst dann, wenn Weg 2 (der reine
+Text-Rückfall, ganz ohne XML) einwandfrei funktioniert hätte. Ursache des
+kaputten XML selbst vermutlich ein von AVMs eigenem Lua-Skript nicht
+escapter, bloßer ``&`` in einem Meldungstext (oder ein laut XML 1.0
+ungültiges Steuerzeichen) - ein seit Langem bekanntes Muster bei
+FRITZ!Box-generiertem "XML" (siehe auch der charset-Bug in
+fritzbox_anrufe's ``http.py``: fremde, von der FRITZ!Box gelieferte Werte
+sind grundsätzlich defensiv zu behandeln, nie als garantiert wohlgeformt
+anzunehmen). Zwei Korrekturen:
+
+1. ``_fetch_via_log_path()`` unternimmt bei einem ``ParseError`` jetzt
+   GENAU EINEN Reparaturversuch (``_sanitize_xml_text``): ungültige
+   Steuerzeichen entfernen, einen bloßen ``&`` (der keinen gültigen
+   Entity-Verweis einleitet) zu ``&amp;`` escapen, danach erneut parsen.
+   Das erhält für die meisten Fälle die vollständige, kategorisierte
+   Ansicht, statt sofort auf den Text-Rückfall auszuweichen.
+2. Der Aufruf von ``_fetch_via_log_path()`` in ``_fetch()`` fängt jetzt
+   BREIT (``except Exception``, nicht mehr nur die beiden bekannten
+   Exception-Familien) ab - Weg 1 ist und bleibt experimentell/unbestätigt
+   (siehe oben), daher darf JEDER Fehlschlag dort (auch ein zweiter,
+   nicht reparierbarer ``ParseError``, ein `KeyError`, o. ä.) nur den
+   Rückfall auf Weg 2 auslösen, niemals das gesamte Setup zum Absturz
+   bringen - identisches Prinzip wie die durchgehend breiten
+   `except Exception`-Blöcke in fritzbox_anrufe's ``settings_data.py`` für
+   dessen ebenfalls unbestätigte data.lua-Wege.
 """
 
 from __future__ import annotations
@@ -36,12 +70,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
 import logging
+import re
 from urllib.parse import urljoin
-from xml.etree.ElementTree import Element
+from xml.etree.ElementTree import Element, ParseError, fromstring
 
 from fritzconnection.core.exceptions import FritzConnectionException, FritzSecurityError
 from fritzconnection.core.fritzhttp import FritzHttp
-from fritzconnection.core.utils import get_xml_root
+from fritzconnection.core.utils import get_content_from, get_xml_root
 from requests.exceptions import ConnectionError as RequestsConnectionError, RequestException
 
 from homeassistant.config_entries import ConfigEntry
@@ -77,6 +112,14 @@ _LOG_PATH_RESULT_KEYS = ("NewX_AVM-DE_DeviceLogPath", "NewDeviceLogPath")
 _DATETIME_FORMAT = "%d.%m.%y %H:%M:%S"
 # GetDeviceLog-Zeilen beginnen mit "DD.MM.YY HH:MM:SS <Meldungstext>".
 _TEXT_LINE_PREFIX_LEN = len("01.02.23 05:45:54")
+
+# v0.2.0-Reparaturversuch für kaputtes devicelog-XML (siehe Moduldoku oben):
+# XML 1.0 erlaubt keine dieser Steuerzeichen (auch nicht escapt) - werden
+# ersatzlos entfernt, statt zu versuchen sie sinnvoll darzustellen.
+_INVALID_XML_CHARS_RE = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# Ein "&", dem kein gültiger Entity-/Zeichenverweis folgt (&amp; &lt; &gt;
+# &quot; &apos; &#123; &#x1F;) ist in XML nicht erlaubt - wird escapt.
+_BARE_AMPERSAND_RE = re.compile(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9A-Fa-f]+;)")
 
 
 @dataclass
@@ -234,10 +277,18 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
             if events is not None:
                 self.last_source = "xml"
                 return events
-        except (FritzConnectionException, RequestsConnectionError, RequestException) as ex:
+        except Exception as ex:  # noqa: BLE001 - Weg 1 ist experimentell/
+            # unbestätigt (siehe Moduldoku) - JEDER Fehler hier darf nur den
+            # Rückfall auf Weg 2 auslösen, nie das gesamte Setup zum
+            # Absturz bringen. Behebt den in v0.2.0 gemeldeten
+            # Einrichtungsfehler ("not well-formed (invalid token)"): ein
+            # xml.etree.ElementTree.ParseError propagierte zuvor ungefangen
+            # durch, weil er weder FritzConnectionException noch
+            # RequestException ist - siehe Moduldoku für Details.
             _LOGGER.debug(
-                "Ereignisse: X_AVM-DE_GetDeviceLogPath fehlgeschlagen, versuche"
-                " GetDeviceLog als Rückfall (%s)",
+                "Ereignisse: X_AVM-DE_GetDeviceLogPath fehlgeschlagen (%s: %s),"
+                " versuche GetDeviceLog als Rückfall",
+                type(ex).__name__,
                 ex,
             )
 
@@ -261,7 +312,21 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
 
         origin = FritzHttp(fc).router_url
         url = urljoin(origin, path)
-        root = get_xml_root(url, session=fc.session)
+        try:
+            root = get_xml_root(url, session=fc.session)
+        except ParseError as ex:
+            # v0.2.0: einmaliger Reparaturversuch statt sofort aufzugeben -
+            # siehe Moduldoku ("Fix in v0.2.0") für die Ursache. Schlägt
+            # auch DAS fehl, wird die (dann zweite) ParseError vom
+            # aufrufenden _fetch() breit abgefangen und löst dort den
+            # Rückfall auf Weg 2 aus - hier wird bewusst nichts geschluckt.
+            _LOGGER.debug(
+                "Ereignisse: devicelog-XML nicht wohlgeformt (%s) - versuche"
+                " Reparatur (Steuerzeichen/bloße '&' escapen)",
+                ex,
+            )
+            raw = get_content_from(url, session=fc.session)
+            root = fromstring(_sanitize_xml_text(raw))
         events = [
             FritzEvent.from_xml_fields(
                 {child.tag.lower(): (child.text or "").strip() for child in event_el}
@@ -321,6 +386,22 @@ def _extract_log_path(result: dict[str, object]) -> str | None:
         if isinstance(value, str) and value.strip().startswith("/"):
             return value.strip()
     return None
+
+
+def _sanitize_xml_text(text: str) -> str:
+    """Best-effort repair for malformed devicelog XML (v0.2.0 fix).
+
+    Removes characters XML 1.0 never permits (not even escaped) and escapes
+    a bare ``&`` that isn't already part of a recognized entity/character
+    reference - the specific issue behind the reported "not well-formed
+    (invalid token)" setup error, see the module docstring. Deliberately
+    minimal: this repairs the two concrete problems observed, not a general
+    XML recovery tool - if the result is still malformed,
+    ``xml.etree.ElementTree.fromstring`` simply raises again and the caller
+    falls back to the plain-text path instead.
+    """
+    text = _INVALID_XML_CHARS_RE.sub("", text)
+    return _BARE_AMPERSAND_RE.sub("&amp;", text)
 
 
 def _iter_event_elements(root: Element):
