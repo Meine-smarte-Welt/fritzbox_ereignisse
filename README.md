@@ -5,7 +5,7 @@ Home-Assistant-Integration (Custom Component), die das FRITZ!Box-eigene
 als Sensor mit Dashboard-Karte in Home Assistant anzeigt - Schwester-
 Integration zu [FRITZ!Box Anrufe](https://github.com/Meine-smarte-Welt/fritzbox_anrufe).
 
-**Status: v0.3.0.** Die Abfrage versucht der Reihe nach drei Wege, von
+**Status: v0.4.0.** Die Abfrage versucht der Reihe nach drei Wege, von
 denen keiner an dieser Stelle vollständig gegen echte FRITZ!Box-Hardware
 verifiziert ist (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)).
 Rückmeldungen (insbesondere FRITZ!OS-Version + welcher Wert im
@@ -109,10 +109,13 @@ max_rows: 15
 
 Die Karte zeigt Reiter je Kategorie (mit Anzahl je Kategorie, "Alle"
 zuerst), ein Suchfeld für den Meldungstext sowie die gefilterte Liste
-(neueste zuerst). Kann für keinen einzigen Eintrag eine Kategorie ermittelt
-werden (weder von der FRITZ!Box selbst noch über die seit v0.3.0
-integrierte Text-Heuristik, siehe unten), erscheint ein Hinweis in der
-Karte, und alle Einträge werden unter "Sonstiges" geführt.
+(neueste zuerst). Die Kategorien entsprechen den fünf Reitern der echten
+FRITZ!Box-Weboberfläche (Telefonie/Internetverbindung/USB-Geräte/WLAN/
+System) - "System" ist dabei seit v0.4.0 bewusst der Auffang-Wert für
+alles, was keiner der anderen vier Kategorien zugeordnet werden kann
+(siehe unten). Nur wenn für einen Eintrag GAR kein Meldungstext vorliegt,
+erscheint ein Hinweis in der Karte und der Eintrag landet unter
+"Sonstiges".
 
 ## Einstellungen
 
@@ -159,14 +162,20 @@ werden.
   unbekanntes Kürzel wird nie verworfen, sondern lediglich unübersetzt
   (großgeschrieben) angezeigt. Liefert die FRITZ!Box KEIN Kürzel (das
   betrifft grundsätzlich Weg 2 und ggf. auch Weg 0/1), versucht die
-  Integration seit v0.3.0 zusätzlich, die Kategorie anhand des
-  Meldungstexts zu erraten (z. B. "Anruf"/"Anrufbeantworter" ->
-  Telefonie, "USB" -> USB-Geräte) - eine reine Texterkennung auf Basis
-  bekannter, typischer FRITZ!Box-Formulierungen, ohne Garantie auf
-  Vollständigkeit oder Richtigkeit. Wird eine Meldung falsch oder gar
-  nicht eingeordnet (dann "Sonstiges"), gerne mit dem genauen
-  Meldungstext als GitHub-Issue melden, damit sich das Mustererkennung
-  erweitern lässt.
+  Integration zusätzlich, die Kategorie anhand des Meldungstexts zu
+  erraten: "Anruf"/"Anrufbeantworter"/... -> Telefonie, "WLAN" -> WLAN,
+  "USB" -> USB-Geräte, "Internetverbindung"/"DSL-Synchronisierung"/... ->
+  Internetverbindung - und seit v0.4.0 **alles, was zu keinem dieser
+  vier Muster passt, wird als "System" eingeordnet** (nicht als
+  "Sonstiges"), weil das genau der Kategorisierung entspricht, die auch
+  die echte FRITZ!Box-Oberfläche selbst verwendet (nur fünf Reiter
+  insgesamt: die vier oben plus System als Rest). "Sonstiges" tritt
+  dadurch praktisch nur noch bei einem leeren Meldungstext auf. Diese
+  Texterkennung basiert ausschließlich auf bekannten, typischen
+  FRITZ!Box-Formulierungen (deutsch), ohne Garantie auf Richtigkeit -
+  wird eine Telefonie-/Internet-/USB-/WLAN-Meldung fälschlich unter
+  "System" einsortiert, gerne mit dem genauen Meldungstext als
+  GitHub-Issue melden, damit sich die Mustererkennung erweitern lässt.
 - **Kein Löschen/Bearbeiten.** Das FRITZ!Box-Ereignisprotokoll wird
   ausschließlich lesend abgerufen.
 
@@ -179,15 +188,21 @@ werden.
 - **Karte erscheint nach Update nicht**: Ordner
   `custom_components/fritzbox_ereignisse` komplett neu installieren, Home
   Assistant vollständig neu starten, Browser-Cache leeren (Strg+Shift+R).
-- **Alle Ereignisse ohne Kategorie ("Sonstiges")**: seit v0.3.0 eher
-  selten, da drei Abrufwege UND eine Text-Heuristik zusammenspielen
-  (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)). Prüfen,
-  welcher Wert im `source`-Attribut des Sensors steht (Entwicklertools ->
-  Zustände): steht dort `text`, liefert diese FRITZ!Box/Firmware
-  vermutlich weder `query.lua` noch `X_AVM-DE_GetDeviceLogPath` nutzbar,
-  und die Text-Heuristik konnte für die vorhandenen Meldungen keine
-  Kategorie erraten. Kein Fehler, aber gerne mit FRITZ!OS-Version und
-  ein paar Beispiel-Meldungstexten als GitHub-Issue melden.
+- **Alle Ereignisse ohne Kategorie ("Sonstiges")**: seit v0.4.0 praktisch
+  ausgeschlossen, außer bei komplett leerem Meldungstext (siehe
+  [Bekannte Einschränkungen](#bekannte-einschränkungen)) - jede sonstige
+  Meldung landet mindestens unter "System". Erscheint der Hinweis
+  trotzdem, gerne mit FRITZ!OS-Version und ein paar Beispiel-
+  Meldungstexten als GitHub-Issue melden.
+- **Kategorie "System" fehlt/erscheint nicht** (behoben in v0.4.0, siehe
+  Versionshistorie): trat auf, weil "System" bis v0.3.0 selbst nur ein
+  eng gefasstes Stichwort-Muster war (neben mehreren erfundenen
+  Zusatzkategorien, die auf der echten FRITZ!Box gar nicht existieren) -
+  viele echte System-Meldungen trafen keines der Muster und landeten
+  fälschlich unter "Sonstiges". Auf Version 0.4.0 oder neuer
+  aktualisieren und die Integration neu laden - "System" ist jetzt der
+  Auffang-Wert für alles, was nicht eindeutig Telefonie/
+  Internetverbindung/USB-Geräte/WLAN ist, genau wie auf der echten Box.
 - **Ereignisse in der Karte sind älter als in der echten
   FRITZ!Box-Oberfläche** (behoben in v0.3.0, siehe Versionshistorie):
   trat auf, wenn Weg 1 auf der jeweiligen FRITZ!Box/Firmware nicht
@@ -209,6 +224,23 @@ werden.
 
 ## Versionshistorie
 
+- **0.4.0**: Nach dem 0.3.0-Update meldete derselbe Nutzer, dass die
+  Kategorie "System" weiterhin nicht erscheint, obwohl sie in der echten
+  FRITZ!Box-Weboberfläche klar als Reiter sichtbar ist. Ursache: die
+  0.3.0-Texterkennung behandelte "System" als ein weiteres, eng
+  gefasstes Stichwort-Muster unter mehreren selbst erfundenen
+  Zusatzkategorien ("Heimnetz"/"DECT"/"VPN"/"Smart Home"), die auf der
+  echten Box gar nicht als eigene Reiter existieren (dort gibt es nur
+  Telefonie/Internetverbindung/USB-Geräte/WLAN/System) - viele echte
+  System-Meldungen trafen keines der engen Muster und landeten
+  fälschlich unter "Sonstiges" statt unter "System". Fix: die
+  Texterkennung prüft jetzt nur noch die vier Kategorien, die
+  nachweislich als eigene Reiter existieren (Telefonie/
+  Internetverbindung/USB-Geräte/WLAN), und ordnet ausnahmslos alles
+  andere "System" zu - "System" ist damit der echte Auffang-Wert, exakt
+  wie auf der echten Box, statt eine fünfte spezifische Kategorie neben
+  "Sonstiges" zu sein. "Sonstiges" tritt dadurch praktisch nur noch bei
+  komplett leerem Meldungstext auf.
 - **0.3.0**: Ein Nutzer verglich die Karte direkt mit der echten
   FRITZ!Box-Weboberfläche und meldete zwei Probleme: (1) die Karte zeigte
   nur die Kategorie "Sonstiges" statt der auf der Box sichtbaren Reiter

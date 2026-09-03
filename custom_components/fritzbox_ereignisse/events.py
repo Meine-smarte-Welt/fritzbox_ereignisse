@@ -120,6 +120,34 @@ gelieferten Typs "alt", obwohl die Box selbst längst neuere - andersartige
    unbekannte/nicht erkannte Formulierung landet weiterhin unter
    "Sonstiges", nie falsch verworfen; ein von der Box selbst geliefertes
    Gruppen-Kürzel (Weg 1) hat immer Vorrang vor der Heuristik.
+
+Fix in v0.4.0 - Kategorie "System" fehlte weiterhin
+---------------------------------------------------------------------
+Nach v0.3.0 meldete derselbe Nutzer, dass "System" als Kategorie
+weiterhin nicht auftauchte, obwohl die echte FRITZ!Box-Weboberfläche
+(Bild 1 aus v0.3.0) sie klar als Reiter zeigt. Ursache: die v0.3.0-
+Heuristik behandelte "System" als EIN WEITERES eng gefasstes Stichwort-
+Muster unter mehreren SELBST ERFUNDENEN Zusatzkategorien ("Heimnetz"/
+"DECT"/"VPN"/"Smart Home") - Kategorien, die auf der echten Box, soweit
+aus dem Bildvergleich des Nutzers ersichtlich, GAR NICHT als eigene
+Reiter existieren (dort gibt es nur Alle/Telefonie/Internetverbindung/
+USB-Geräte/WLAN/System). Ein System-Ereignis, dessen Text keines der
+engen Muster ("Firmware", "Neustart", "Zeitzone", ...) traf, landete
+dadurch fälschlich unter "Sonstiges" oder einer der erfundenen
+Zusatzkategorien, obwohl es auf der echten Box unter "System" erscheint.
+
+Korrektur: ``_classify_message_group()`` prüft jetzt nur noch die vier
+Kategorien, die nachweislich auch als eigene Reiter existieren
+(Telefonie/WLAN/USB-Geräte/Internetverbindung), und liefert für JEDEN
+nicht-leeren Meldungstext, der keines dieser vier Muster trifft, jetzt
+``"sys"`` (System) statt ``None`` - "System" ist also der echte
+Auffang-Topf für alles Übrige, nicht eine fünfte spezifische Kategorie
+neben "Sonstiges". "Sonstiges" bleibt dadurch praktisch nur noch für den
+Randfall eines leeren Meldungstexts übrig. Die erfundenen Zusatz-
+Kategorien-Kürzel ("dect"/"vpn"/"network"/"smarthome") bleiben in
+``EVENT_GROUP_LABELS`` bestehen (falls ein zukünftiger Fetch-Weg sie
+einmal nativ als Gruppen-Kürzel liefert), werden aber seit v0.4.0 von
+der Text-Heuristik selbst nicht mehr vergeben.
 """
 
 from __future__ import annotations
@@ -182,16 +210,21 @@ _INVALID_XML_CHARS_RE = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 # &quot; &apos; &#123; &#x1F;) ist in XML nicht erlaubt - wird escapt.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9A-Fa-f]+;)")
 
-# v0.3.0 - Text-Heuristik für Kategorien (siehe Moduldoku, "Fix/Feature in
-# v0.3.0"): reihenfolgeabhängige Liste aus (Gruppen-Kürzel, [Muster]) -
-# das erste passende Muster gewinnt, daher stehen spezifischere Kategorien
-# vor generischeren (z. B. "tel"/"dect"/"wlan"/"usb" vor dem breiten
-# "system"-Auffangbecken). Bewusst NUR auf typische, wiederkehrende
-# FRITZ!Box-Formulierungen (deutsch) gestützt - keine Garantie auf
-# Vollständigkeit, siehe README "Bekannte Einschränkungen". Ein Treffer
-# hier wird NUR verwendet, wenn die Box selbst kein Gruppen-Kürzel
-# geliefert hat (siehe _derive_group) - ein von der Box geliefertes
-# Kürzel hat immer Vorrang.
+# v0.3.0/v0.4.0 - Text-Heuristik für Kategorien (siehe Moduldoku,
+# "Fix/Feature in v0.3.0" + "Fix in v0.4.0"): reihenfolgeabhängige Liste
+# aus (Gruppen-Kürzel, [Muster]) - das erste passende Muster gewinnt.
+# NUR die vier Kategorien, die auch in der echten FRITZ!Box-Weboberfläche
+# als eigene Reiter neben "System" auftauchen (siehe Bild-Vergleich des
+# Nutzers: Telefonie/Internetverbindung/USB-Geräte/WLAN/System). Bewusst
+# NUR auf typische, wiederkehrende FRITZ!Box-Formulierungen (deutsch)
+# gestützt - keine Garantie auf Vollständigkeit, siehe README "Bekannte
+# Einschränkungen". Ein Treffer hier wird NUR verwendet, wenn die Box
+# selbst kein Gruppen-Kürzel geliefert hat (siehe _derive_group) - ein von
+# der Box geliefertes Kürzel hat immer Vorrang.
+#
+# WICHTIG (v0.4.0): "System" ist bewusst KEIN Eintrag in dieser Liste,
+# sondern der universelle Auffang-Wert von _classify_message_group() für
+# alles, was hier NICHT passt - siehe dortige Begründung.
 _MESSAGE_GROUP_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
     (group, re.compile(pattern, re.IGNORECASE))
     for group, pattern in (
@@ -200,22 +233,12 @@ _MESSAGE_GROUP_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = tuple(
             r"anruf\w*|anrufbeantworter|telefonanlage|telefonie|rufumleitung|"
             r"rufnummer|faxnachricht|\bsip\b|\bvoip\b",
         ),
-        ("dect", r"\bdect\b|mobilteil"),
         ("wlan", r"\bwlan\b|wpa[2-3]?[- ]?(psk|schlüssel)?"),
         ("usb", r"\busb\b|massenspeicher"),
         (
             "internet",
             r"internetverbindung|dsl[- ]?synchronisierung|\bppp\b|"
             r"online-zähler|zwangstrennung|internetzugang|\bipv[46]\b",
-        ),
-        ("vpn", r"\bvpn\b"),
-        ("smarthome", r"smart[- ]?home|schaltsteckdose|thermostat|heizk\w*regler"),
-        ("network", r"heimnetz|\bmesh\b|repeater|ip-adresse"),
-        (
-            "sys",
-            r"firmware|neu gestartet|neustart|systemzeit|zeitzone|"
-            r"kindersicherung|anmeldung\w*\s*fehlgeschlagen|benutzerkonto|"
-            r"passwort|update|energiesparfunktion",
         ),
     )
 )
@@ -226,24 +249,40 @@ def _classify_message_group(message: str) -> str | None:
 
     Reines Muster-Matching, kein Aufruf an die FRITZ!Box - daher ohne
     Hardware testbar und ohne jedes Risiko für den Abrufpfad selbst.
-    ``None``, wenn keines der bekannten Muster passt (bleibt dann
-    "Sonstiges", wie schon vor v0.3.0).
+
+    v0.4.0-Fix: liefert für JEDEN nicht-leeren Meldungstext, der keines
+    der vier spezifischen Muster oben trifft, jetzt ``"sys"`` (System)
+    statt ``None``. Grund: ein Nutzer meldete nach v0.3.0, dass die
+    Kategorie "System" weiterhin fehlte, obwohl sie in der echten
+    FRITZ!Box-Weboberfläche neben Telefonie/Internetverbindung/
+    USB-Geräte/WLAN klar sichtbar ist (siehe Moduldoku). Ursache: bis
+    v0.3.0 war "System" nur EIN WEITERES eng gefasstes Stichwort-Muster
+    unter mehreren erfundenen Zusatzkategorien (u. a. "Heimnetz"/"DECT"/
+    "VPN"/"Smart Home", die auf der echten Box gar nicht als eigene
+    Reiter existieren) - viele eigentlich System-Meldungen trafen keines
+    dieser engen Muster und landeten fälschlich unter "Sonstiges" (oder
+    einer der erfundenen Zusatzkategorien). Da die echte Oberfläche
+    NACHWEISLICH nur fünf Reiter kennt (Alle plus die vier oben plus
+    System), ist "System" tatsächlich der Auffang-Topf für alles
+    Restliche - nicht eine fünfte spezifische Kategorie neben "Sonstiges".
+    ``None`` (-> "Sonstiges") bleibt nur für den Randfall eines leeren
+    Meldungstexts.
     """
     if not message:
         return None
     for group, pattern in _MESSAGE_GROUP_PATTERNS:
         if pattern.search(message):
             return group
-    return None
+    return "sys"
 
 
 def _derive_group(explicit_group: str | None, message: str) -> str:
     """Gruppen-Kürzel: von der Box geliefertes Kürzel hat Vorrang.
 
     Fehlt es (leer/``None`` - insb. immer bei Weg 2, ggf. auch bei Weg 0/1),
-    wird die Text-Heuristik versucht; schlägt auch die fehl, bleibt es bei
-    :data:`EVENT_GROUP_UNKNOWN` ("Sonstiges") - identisches Verhalten wie
-    vor v0.3.0, nur mit einer zusätzlichen Chance auf eine echte Kategorie.
+    wird die Text-Heuristik versucht; schlägt auch die fehl (nur bei
+    leerem Meldungstext, siehe :func:`_classify_message_group`), bleibt es
+    bei :data:`EVENT_GROUP_UNKNOWN` ("Sonstiges").
     """
     explicit = (explicit_group or "").strip().lower()
     if explicit:

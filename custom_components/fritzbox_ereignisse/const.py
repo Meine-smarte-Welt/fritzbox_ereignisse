@@ -62,13 +62,18 @@ MQ_LOG_SEPARATE_ALL = "logger:status/log_separate/list(time,msg,ref,type)"
 
 # Gruppen-/Kategorie-Kürzel, wie sie im XML-Protokoll (Weg 1) beobachtet
 # wurden, ERGÄNZT um die Kürzel, die die integrationseigene
-# Text-Heuristik (siehe events.py:_classify_message_group, seit v0.3.0)
-# vergibt - rein für hübschere Anzeigenamen in der Karte (siehe
+# Text-Heuristik (siehe events.py:_classify_message_group) vergibt - rein
+# für hübschere Anzeigenamen in der Karte (siehe
 # www/fritzbox-ereignisse-card.js). Namen an die tatsächliche
 # FRITZ!Box-Weboberfläche angeglichen (Reiter "Telefonie" /
-# "Internetverbindung" / "USB-Geräte" / "WLAN" / "System"). Ein
-# unbekanntes/fehlendes Kürzel wird defensiv als "Allgemein" dargestellt,
-# nie verworfen.
+# "Internetverbindung" / "USB-Geräte" / "WLAN" / "System"). Seit v0.4.0
+# vergibt die Text-Heuristik selbst NUR NOCH "tel"/"wlan"/"usb"/
+# "internet" gezielt sowie "sys" als universellen Auffang-Wert für alles
+# Übrige (siehe events.py-Moduldoku, "Fix in v0.4.0") - "vpn"/"dect"/
+# "network"/"smarthome" bleiben hier als Kürzel erhalten (falls ein
+# künftiger Fetch-Weg sie einmal nativ liefert), werden von der Heuristik
+# aber nicht mehr vergeben. Ein unbekanntes/fehlendes Kürzel wird
+# defensiv als "Allgemein" dargestellt, nie verworfen.
 EVENT_GROUP_LABELS: Final[dict[str, str]] = {
     "sys": "System",
     "system": "System",

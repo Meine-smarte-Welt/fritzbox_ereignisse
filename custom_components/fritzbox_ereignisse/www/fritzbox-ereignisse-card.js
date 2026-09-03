@@ -1,4 +1,4 @@
-// fritzbox-ereignisse-card.js - v0.3.0
+// fritzbox-ereignisse-card.js - v0.4.0
 //
 // Lovelace-Karte für die fritzbox_ereignisse-Integration: zeigt das
 // FRITZ!Box-Ereignisprotokoll (sensor.fritzbox_ereignisse_ereignisse,
@@ -8,7 +8,11 @@
 // einer Volltextsuche. Seit v0.3.0 liefert auch der Text-Rückfall
 // (source: "text") dank serverseitiger Text-Heuristik oft schon
 // Kategorien - der "keine Kategorien"-Hinweis unten prüft daher direkt
-// die tatsächlichen Gruppen der Ereignisse, nicht mehr nur "source".
+// die tatsächlichen Gruppen der Ereignisse, nicht mehr nur "source". Seit
+// v0.4.0 ist "System" dabei server-seitig der universelle Auffang-Wert
+// für alles, was keiner der anderen vier Kategorien zugeordnet werden
+// kann (siehe Integration, events.py) - dieser Hinweis erscheint daher
+// nur noch, wenn wirklich gar keine Meldungstexte vorliegen.
 //
 // Struktur/Konventionen bewusst an fritzbox-anrufe-card.js angelehnt (siehe
 // dortige, ausführlichere Moduldoku): persistente Shadow-Root-Kindknoten
