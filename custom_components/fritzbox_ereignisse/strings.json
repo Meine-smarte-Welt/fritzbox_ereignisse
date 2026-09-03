@@ -1,0 +1,51 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FRITZ!Box Ereignisse einrichten",
+        "description": "Zugangsdaten des FRITZ!Box-Benutzerkontos, das für den TR-064-Zugriff freigeschaltet ist (Berechtigung \"FRITZ!Box-Einstellungen\").",
+        "data": {
+          "host": "Host/IP",
+          "port": "Port",
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Anmeldedaten erneuern",
+        "description": "Die Anmeldung bei der FRITZ!Box unter {host} ist fehlgeschlagen. Bitte Benutzername/Passwort prüfen.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Anmeldung fehlgeschlagen. Benutzername/Passwort prüfen.",
+      "insufficient_permissions": "Dem Benutzerkonto fehlt die Berechtigung \"FRITZ!Box-Einstellungen\".",
+      "no_devices_found": "FRITZ!Box unter dieser Adresse/diesem Port nicht erreichbar.",
+      "unknown": "Unerwarteter Fehler. Bitte Home-Assistant-Log prüfen."
+    },
+    "abort": {
+      "already_configured": "Dieses FRITZ!Box-Gerät ist bereits eingerichtet.",
+      "reauth_successful": "Anmeldedaten erfolgreich erneuert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "FRITZ!Box Ereignisse konfigurieren",
+        "data": {
+          "max_events": "Anzahl gespeicherter Ereignisse"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "fritzbox_ereignisse_ereignisse": {
+        "name": "Ereignisse"
+      }
+    }
+  }
+}
