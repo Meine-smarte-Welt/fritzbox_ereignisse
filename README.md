@@ -5,9 +5,8 @@ Home-Assistant-Integration (Custom Component), die das FRITZ!Box-eigene
 als Sensor mit Dashboard-Karte in Home Assistant anzeigt - Schwester-
 Integration zu [FRITZ!Box Anrufe](https://github.com/Meine-smarte-Welt/fritzbox_anrufe).
 
-**Status: v0.4.0.** Die Abfrage versucht der Reihe nach drei Wege, von
-denen keiner an dieser Stelle vollständig gegen echte FRITZ!Box-Hardware
-verifiziert ist (siehe [Bekannte Einschränkungen](#bekannte-einschränkungen)).
+**Status: v1.0.0 - erste offizielle Version**, veröffentlicht unter
+[github.com/Meine-smarte-Welt/fritzbox_ereignisse](https://github.com/Meine-smarte-Welt/fritzbox_ereignisse).
 Rückmeldungen (insbesondere FRITZ!OS-Version + welcher Wert im
 `source`-Attribut steht + ob Kategorien angezeigt werden) sind als
 GitHub-Issue willkommen.
@@ -70,7 +69,7 @@ Es wird ein Sensor `sensor.fritzbox_ereignisse_ereignisse` angelegt:
 | --- | --- | --- |
 | Anzahl gespeicherter Ereignisse | `events` | Liste aller Ereignisse (siehe unten) |
 | | `groups` | Liste der im aktuellen Abruf vorkommenden Kategorie-Kürzel |
-| | `source` | `query` (seit v0.3.0, dieselbe interne Abfrage wie die Weboberfläche selbst), `xml` (vollständiges Protokoll via TR-064) oder `text` (älterer TR-064-Rückfall) - siehe [Bekannte Einschränkungen](#bekannte-einschränkungen) |
+| | `source` | `query` (dieselbe interne Abfrage wie die Weboberfläche selbst), `xml` (vollständiges Protokoll via TR-064) oder `text` (älterer TR-064-Rückfall) |
 
 Jeder Eintrag in `events` ist ein Objekt mit:
 
@@ -107,123 +106,92 @@ show_title: true
 max_rows: 15
 ```
 
-Die Karte zeigt Reiter je Kategorie (mit Anzahl je Kategorie, "Alle"
-zuerst), ein Suchfeld für den Meldungstext sowie die gefilterte Liste
-(neueste zuerst). Die Kategorien entsprechen den fünf Reitern der echten
-FRITZ!Box-Weboberfläche (Telefonie/Internetverbindung/USB-Geräte/WLAN/
-System) - "System" ist dabei seit v0.4.0 bewusst der Auffang-Wert für
-alles, was keiner der anderen vier Kategorien zugeordnet werden kann
-(siehe unten). Nur wenn für einen Eintrag GAR kein Meldungstext vorliegt,
-erscheint ein Hinweis in der Karte und der Eintrag landet unter
-"Sonstiges".
+Die Karte zeigt Reiter je Kategorie (mit Icon und Anzahl je Kategorie,
+"Alle" zuerst), ein Suchfeld für den Meldungstext sowie die gefilterte
+Liste (neueste zuerst). Die Kategorien entsprechen den fünf Reitern der
+echten FRITZ!Box-Weboberfläche (Telefonie/Internetverbindung/USB-Geräte/
+WLAN/System) - "System" ist dabei bewusst der Auffang-Wert für alles, was
+keiner der anderen vier Kategorien zugeordnet werden kann. Nur wenn für
+einen Eintrag GAR kein Meldungstext vorliegt, erscheint ein Hinweis in der
+Karte und der Eintrag landet unter "Sonstiges".
+
+Über den grafischen Karten-Editor (Zahnrad auf der Karte im
+Dashboard-Bearbeitungsmodus) lassen sich Sensor, Titel (inkl. **Titel
+komplett ausblenden** über den Schalter "Titel anzeigen"), Zeilenanzahl
+sowie - seit Version 1.0.0 - die [Farben](#farben) der Karte einstellen,
+ganz ohne YAML.
+
+## Farben
+
+Seit Version 1.0.0 lassen sich die Akzentfarben der Karte über eine
+eigene "Farben"-Sektion im grafischen Karten-Editor anpassen (analog zu
+[FRITZ!Box Anrufe](https://github.com/Meine-smarte-Welt/fritzbox_anrufe)):
+je Farbe ein grafisches Auswahlfeld (öffnet den Farbwähler des
+Betriebssystems/Browsers) sowie ein Textfeld für beliebige CSS-Werte
+(`var(--irgendeine-theme-farbe)`, `rgb(...)`, `hsl(...)`, CSS-Farbnamen -
+alles, was das grafische Feld selbst nicht abbilden kann). Einstellbar
+sind die Farbe des aktiven Tabs, eine einheitliche Farbe für alle
+Zeilen-Icons sowie je eine eigene Icon-Farbe für die Kategorien
+Alle/Telefonie/Internetverbindung/USB-Geräte/WLAN/System (wirkt sowohl im
+jeweiligen Tab als auch beim passenden Zeilen-Icon, sofern keine
+einheitliche Zeilen-Icon-Farbe gesetzt ist). Ein leeres Feld oder ein
+Klick auf "Alle Farben zurücksetzen" stellt die bisherige, feste
+Theme-Farbe wieder her. Die Einstellungen werden wie jede andere
+Karten-Konfiguration direkt in der jeweiligen Dashboard-Ansicht
+gespeichert.
 
 ## Einstellungen
 
 Über Einstellungen → Geräte & Dienste → FRITZ!Box Ereignisse →
-"Konfigurieren" lässt sich die **Anzahl gespeicherter Ereignisse**
-einstellen (20/50/100/200/500, Standard 100) - begrenzt clientseitig, wie
-viele der von der FRITZ!Box gelieferten Einträge im Sensor gehalten
-werden.
+"Konfigurieren" lässt sich die Verlaufstiefe einstellen - wahlweise:
 
-## Bekannte Einschränkungen
+- **Anzahl Ereignisse** (Standard): 20/50/100/200/500, Standard 100 -
+  begrenzt clientseitig, wie viele der von der FRITZ!Box gelieferten
+  Einträge im Sensor gehalten werden.
+- **Anzahl Tage**: 1-90 Tage, Standard 30 - hält stattdessen alle
+  Einträge, deren Zeitpunkt innerhalb der gewählten Anzahl Tage liegt,
+  unabhängig davon, wie viele das im Einzelfall sind. Einträge ohne
+  auswertbaren Zeitstempel (kann beim älteren Text-Rückfall vorkommen,
+  siehe `source`-Attribut) werden in diesem Modus nicht angezeigt, da ihr
+  Alter nicht beurteilt werden kann.
 
-- **Drei Abrufwege.** Die Integration versucht der Reihe nach: (0, seit
-  v0.3.0, EXPERIMENTELL) `query.lua` - dieselbe sitzungsbasierte,
-  interne Abfrage, die auch die FRITZ!Box-Weboberfläche selbst für
-  "System > Ereignisse" verwendet; (1) `X_AVM-DE_GetDeviceLogPath`
-  (FRITZ!OS 7.90+, TR-064, liefert das vollständige Protokoll als XML);
-  (2) das ältere `GetDeviceLog` (TR-064, liefert nur eine flache
-  Textliste ohne native Kategorie - laut Community-Berichten fehlen hier
-  sogar einzelne Eintragstypen, z. B. fehlgeschlagene Anmeldeversuche).
-  Alle drei Wege sind durch Community-Referenzen belegt (siehe
-  Quellcode-Kommentare in `events.py`); Weg 1 wurde durch eine reale
-  Nutzerrückmeldung (siehe [Versionshistorie](#versionshistorie), v0.2.0)
-  bestätigt grundsätzlich Daten liefern zu können, Weg 0 und Weg 2 bleiben
-  bisher unbestätigt. Ein zweiter Nutzerbericht (v0.3.0) legt nahe, dass
-  Weg 1 nicht auf jeder FRITZ!Box/Firmware funktioniert und dann
-  stillschweigend auf Weg 2 zurückgefallen wird (erkennbar am
-  `source`-Attribut, siehe [Sensor](#sensor)) - Weg 0 wurde genau dafür
-  ergänzt. Schlagen alle drei Wege fehl, wird der Sensor "nicht
-  verfügbar" - bitte mit FRITZ!OS-Version als GitHub-Issue melden.
-- **`query.lua` ist ein undokumentierter, interner Endpunkt.** Weg 0
-  nutzt denselben Mechanismus, den auch die FRITZ!Box-Weboberfläche
-  selbst verwendet, ist aber von AVM nicht öffentlich als stabile
-  Schnittstelle dokumentiert und kann sich mit einem Firmware-Update
-  jederzeit ändern oder ganz entfallen - schlägt er fehl, greift
-  automatisch Weg 1 bzw. Weg 2, kein Fehlerfall.
-- **Devicelog-XML kann leicht fehlerhaft sein.** Manche FRITZ!OS-Stände
-  liefern bei `X_AVM-DE_GetDeviceLogPath` XML, das einen nicht escapten
-  bloßen `&` in einem Meldungstext oder ein laut XML 1.0 ungültiges
-  Steuerzeichen enthält. Seit v0.2.0 unternimmt die Integration hierfür
-  automatisch einen Reparaturversuch (siehe Versionshistorie); schlägt
-  auch dieser fehl, greift automatisch der nächste Weg - kein Fehlerfall.
-- **Kategorien sind teils eine Vermutung.** Von der FRITZ!Box selbst
-  gelieferte Kürzel (`sys`/`internet`/`tel`/...) werden übernommen; ein
-  unbekanntes Kürzel wird nie verworfen, sondern lediglich unübersetzt
-  (großgeschrieben) angezeigt. Liefert die FRITZ!Box KEIN Kürzel (das
-  betrifft grundsätzlich Weg 2 und ggf. auch Weg 0/1), versucht die
-  Integration zusätzlich, die Kategorie anhand des Meldungstexts zu
-  erraten: "Anruf"/"Anrufbeantworter"/... -> Telefonie, "WLAN" -> WLAN,
-  "USB" -> USB-Geräte, "Internetverbindung"/"DSL-Synchronisierung"/... ->
-  Internetverbindung - und seit v0.4.0 **alles, was zu keinem dieser
-  vier Muster passt, wird als "System" eingeordnet** (nicht als
-  "Sonstiges"), weil das genau der Kategorisierung entspricht, die auch
-  die echte FRITZ!Box-Oberfläche selbst verwendet (nur fünf Reiter
-  insgesamt: die vier oben plus System als Rest). "Sonstiges" tritt
-  dadurch praktisch nur noch bei einem leeren Meldungstext auf. Diese
-  Texterkennung basiert ausschließlich auf bekannten, typischen
-  FRITZ!Box-Formulierungen (deutsch), ohne Garantie auf Richtigkeit -
-  wird eine Telefonie-/Internet-/USB-/WLAN-Meldung fälschlich unter
-  "System" einsortiert, gerne mit dem genauen Meldungstext als
-  GitHub-Issue melden, damit sich die Mustererkennung erweitern lässt.
-- **Kein Löschen/Bearbeiten.** Das FRITZ!Box-Ereignisprotokoll wird
-  ausschließlich lesend abgerufen.
+## Icon
 
-## Fehlerbehebung
+Home Assistant unterstützt seit Version 2026.3 eigene Marken-Icons für
+Custom Integrations über einen `brand/`-Unterordner (`icon.png`,
+`logo.png`, jeweils mit `@2x`-Variante) - ganz ohne Eintrag in der
+offiziellen `home-assistant/brands`-Sammlung (die für Custom Integrations
+inzwischen keine Icons mehr annimmt). Dieses Repository liefert ab
+Version 1.0.0 ein eigenes Icon (`brand/icon.png`, `brand/icon@2x.png`,
+`brand/logo.png`, `brand/logo@2x.png`) mit aus - es wird ohne weitere
+Konfiguration automatisch in der Integrationsliste sowie als Geräte-Icon
+verwendet.
 
-- **Sensor zeigt `unavailable`**: Kontoberechtigung
-  "FRITZ!Box-Einstellungen" prüfen (siehe [Voraussetzungen](#voraussetzungen));
-  Fehlermeldung dazu erscheint im Home-Assistant-Log
-  (`custom_components.fritzbox_ereignisse`).
-- **Karte erscheint nach Update nicht**: Ordner
-  `custom_components/fritzbox_ereignisse` komplett neu installieren, Home
-  Assistant vollständig neu starten, Browser-Cache leeren (Strg+Shift+R).
-- **Alle Ereignisse ohne Kategorie ("Sonstiges")**: seit v0.4.0 praktisch
-  ausgeschlossen, außer bei komplett leerem Meldungstext (siehe
-  [Bekannte Einschränkungen](#bekannte-einschränkungen)) - jede sonstige
-  Meldung landet mindestens unter "System". Erscheint der Hinweis
-  trotzdem, gerne mit FRITZ!OS-Version und ein paar Beispiel-
-  Meldungstexten als GitHub-Issue melden.
-- **Kategorie "System" fehlt/erscheint nicht** (behoben in v0.4.0, siehe
-  Versionshistorie): trat auf, weil "System" bis v0.3.0 selbst nur ein
-  eng gefasstes Stichwort-Muster war (neben mehreren erfundenen
-  Zusatzkategorien, die auf der echten FRITZ!Box gar nicht existieren) -
-  viele echte System-Meldungen trafen keines der Muster und landeten
-  fälschlich unter "Sonstiges". Auf Version 0.4.0 oder neuer
-  aktualisieren und die Integration neu laden - "System" ist jetzt der
-  Auffang-Wert für alles, was nicht eindeutig Telefonie/
-  Internetverbindung/USB-Geräte/WLAN ist, genau wie auf der echten Box.
-- **Ereignisse in der Karte sind älter als in der echten
-  FRITZ!Box-Oberfläche** (behoben in v0.3.0, siehe Versionshistorie):
-  trat auf, wenn Weg 1 auf der jeweiligen FRITZ!Box/Firmware nicht
-  funktionierte und der textbasierte Rückfall (`GetDeviceLog`) bestimmte,
-  neuere Eintragstypen gar nicht liefert. Auf Version 0.3.0 oder neuer
-  aktualisieren und die Integration neu laden - der neue Weg 0
-  (`query.lua`) nutzt dieselbe Abfrage wie die FRITZ!Box-Weboberfläche
-  selbst und sollte daher tagesaktuelle Daten liefern, sofern die eigene
-  FRITZ!Box/Firmware diesen Weg unterstützt.
-- **Einrichtungsfehler "not well-formed (invalid token): line X, column Y"**
-  (behoben in v0.2.0): trat auf, wenn das devicelog-XML einen nicht
-  escapten `&` oder ein ungültiges Steuerzeichen enthielt - siehe
-  [Bekannte Einschränkungen](#bekannte-einschränkungen) und
-  [Versionshistorie](#versionshistorie). Auf Version 0.2.0 oder neuer
-  aktualisieren und die Integration neu laden (Einstellungen → Geräte &
-  Dienste → FRITZ!Box Ereignisse → drei Punkte → "Neu laden" - ein
-  vollständiger Neustart ist dafür nicht nötig, nur bei einem
-  Datei-Update über HACS/manuell).
+**Icon erscheint nicht auf der HACS-Downloads-Seite:** Das ist ein
+bekannter, aktuell offener Fehler in HACS selbst, nicht in dieser
+Integration. HACS' eigene Downloads-Übersicht lädt Icons weiterhin über
+die alte öffentliche CDN (`data-v2.hacs.xyz`/`brands.home-assistant.io`),
+kennt den seit Home Assistant 2026.3 unterstützten Weg für inline
+mitgelieferte Icons (`brand/`-Ordner, wie oben beschrieben) aber noch
+nicht - siehe [hacs/integration#5223](https://github.com/hacs/integration/issues/5223)
+und [hacs/integration#5171](https://github.com/hacs/integration/issues/5171).
+Wichtig: Das Icon wird davon unabhängig überall sonst in Home Assistant
+korrekt angezeigt (Einstellungen → Geräte & Dienste, Geräteseite usw.) -
+betroffen ist ausschließlich die HACS-eigene Downloads-Liste, bis die
+dortigen Maintainer den Fehler beheben.
 
 ## Versionshistorie
 
+- **1.0.0** (erste offizielle Version): eigenes Marken-Icon
+  (`brand/icon.png`, `brand/logo.png`, siehe [Icon](#icon));
+  Verlaufstiefe wahlweise nach Anzahl ODER Anzahl Tage einstellbar (siehe
+  [Einstellungen](#einstellungen)); konfigurierbare Farben für Tabs und
+  Zeilen-Icons über einen grafischen Editor-Abschnitt (siehe
+  [Farben](#farben)); die Abschnitte "Bekannte Einschränkungen" und
+  "Fehlerbehebung" wurden aus dieser README entfernt, da sie
+  ausschließlich frühere, inzwischen behobene Probleme dokumentierten
+  (siehe die jeweiligen Versionshistorie-Einträge unten für Details zu
+  den drei Abrufwegen/der Text-Heuristik).
 - **0.4.0**: Nach dem 0.3.0-Update meldete derselbe Nutzer, dass die
   Kategorie "System" weiterhin nicht erscheint, obwohl sie in der echten
   FRITZ!Box-Weboberfläche klar als Reiter sichtbar ist. Ursache: die
