@@ -148,6 +148,22 @@ Kategorien-Kürzel ("dect"/"vpn"/"network"/"smarthome") bleiben in
 ``EVENT_GROUP_LABELS`` bestehen (falls ein zukünftiger Fetch-Weg sie
 einmal nativ als Gruppen-Kürzel liefert), werden aber seit v0.4.0 von
 der Text-Heuristik selbst nicht mehr vergeben.
+
+Feature in v1.0.0 - Verlaufstiefe wahlweise nach Tagen statt nur Anzahl
+---------------------------------------------------------------------
+Bisher (bis v0.4.0) wurde die Verlaufstiefe ausschließlich über eine feste
+Anzahl (``CONF_MAX_EVENTS``) begrenzt. Seit v1.0.0 lässt sich stattdessen
+auch ein Alters-Fenster in Tagen wählen (``CONF_EVENT_LIMIT_TYPE`` /
+``CONF_MAX_EVENT_DAYS``, siehe const.py) - analog zum Anzahl-oder-Tage-
+Umschalter der drei Anruflisten-Sensoren in fritzbox_anrufe
+(``CALL_LOG_LIMIT_COUNT``/``CALL_LOG_LIMIT_DAYS``). Anders als dort gibt es
+hier nur EINEN Sensor und keinen fest begrenzten, gemeinsam genutzten
+Abruf-Zeitraum (die FRITZ!Box liefert bei jedem Abruf ohnehin ihr
+gesamtes, eigenes Ereignisprotokoll) - im Tage-Modus werden daher einfach
+alle Einträge verworfen, deren Zeitstempel älter als der gewählte
+Tage-Wert ist (bzw. die - wie mitunter beim Text-Rückfall Weg 2 - gar
+keinen auswertbaren Zeitstempel haben, siehe :func:`_apply_event_limit`),
+statt wie bisher hart auf die letzten N Einträge zu kürzen.
 """
 
 from __future__ import annotations
@@ -174,12 +190,17 @@ from .base import FritzBoxDevice
 from .const import (
     ACTION_GET_DEVICE_LOG,
     ACTION_GET_DEVICE_LOG_PATH,
+    CONF_EVENT_LIMIT_TYPE,
+    CONF_MAX_EVENT_DAYS,
     CONF_MAX_EVENTS,
+    DEFAULT_EVENT_LIMIT_TYPE,
+    DEFAULT_MAX_EVENT_DAYS,
     DEFAULT_MAX_EVENTS,
     DOMAIN,
     EVENT_GROUP_LABEL_UNKNOWN,
     EVENT_GROUP_LABELS,
     EVENT_GROUP_UNKNOWN,
+    EVENT_LIMIT_DAYS,
     EVENT_NEW_EREIGNIS,
     MQ_LOG_SEPARATE_ALL,
     QUERY_LUA_PATH,
@@ -476,8 +497,8 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         except (FritzConnectionException, RequestsConnectionError, RequestException) as ex:
             raise UpdateFailed(f"Fehler beim Abrufen der FRITZ!Box-Ereignisse: {ex}") from ex
 
-        max_events = self.config_entry.options.get(CONF_MAX_EVENTS, DEFAULT_MAX_EVENTS)
-        events = _sorted_newest_first(events)[:max_events]
+        limit_type, limit_value = _limit_for(self.config_entry)
+        events = _apply_event_limit(_sorted_newest_first(events), limit_type, limit_value)
         self._fire_new_events(events)
         return events
 
@@ -716,3 +737,37 @@ def _sorted_newest_first(events: list[FritzEvent]) -> list[FritzEvent]:
     without_timestamp = [event for event in events if event.timestamp is None]
     with_timestamp.sort(key=lambda event: event.timestamp, reverse=True)
     return with_timestamp + without_timestamp
+
+
+def _limit_for(config_entry: ConfigEntry) -> tuple[str, int]:
+    """Return (limit_type, value) for the configured Verlaufstiefe (v1.0.0).
+
+    Analog ``FritzCallLogCoordinator._limit_for()`` in fritzbox_anrufe -
+    hier nur für den einen Ereignisse-Sensor dieser Integration, siehe
+    Moduldoku ("Feature in v1.0.0").
+    """
+    options = config_entry.options
+    limit_type = options.get(CONF_EVENT_LIMIT_TYPE, DEFAULT_EVENT_LIMIT_TYPE)
+    if limit_type == EVENT_LIMIT_DAYS:
+        return limit_type, options.get(CONF_MAX_EVENT_DAYS, DEFAULT_MAX_EVENT_DAYS)
+    return limit_type, options.get(CONF_MAX_EVENTS, DEFAULT_MAX_EVENTS)
+
+
+def _apply_event_limit(
+    events: list[FritzEvent], limit_type: str, value: int
+) -> list[FritzEvent]:
+    """Truncate an already newest-first-sorted event list to the given limit.
+
+    Reine, hardware-unabhängig testbare Funktion (siehe
+    fritzbox_ereignisse_test/test_v100.py) - analog
+    ``FritzCallLogCoordinator._apply_limit()`` in fritzbox_anrufe. Im
+    Tage-Modus (:data:`EVENT_LIMIT_DAYS`) werden Einträge OHNE auswertbaren
+    Zeitstempel (``timestamp is None`` - insbesondere möglich beim
+    Text-Rückfall Weg 2, siehe :meth:`FritzEvent.from_text_line`) verworfen,
+    da ihr Alter nicht beurteilt werden kann - identisches Prinzip wie dort
+    (``isinstance(call.date, datetime)``).
+    """
+    if limit_type == EVENT_LIMIT_DAYS:
+        cutoff = datetime.now() - timedelta(days=value)
+        return [event for event in events if event.timestamp is not None and event.timestamp >= cutoff]
+    return events[:value]

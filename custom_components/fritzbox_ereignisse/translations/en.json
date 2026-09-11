@@ -36,8 +36,23 @@
       "init": {
         "title": "Configure FRITZ!Box Ereignisse",
         "data": {
-          "max_events": "Number of stored events"
+          "event_limit_type": "Mode",
+          "max_events": "Number of stored events",
+          "max_event_days": "Number of days of stored events"
+        },
+        "data_description": {
+          "event_limit_type": "Whether the retention depth is limited by count or by age (days).",
+          "max_events": "Only used in \"Number of events\" mode.",
+          "max_event_days": "Only used in \"Number of days\" mode."
         }
+      }
+    }
+  },
+  "selector": {
+    "event_limit_type": {
+      "options": {
+        "count": "Number of events",
+        "days": "Number of days"
       }
     }
   },

@@ -23,13 +23,21 @@ from homeassistant.helpers import selector
 
 from .base import FritzBoxDevice
 from .const import (
+    CONF_EVENT_LIMIT_TYPE,
+    CONF_MAX_EVENT_DAYS,
     CONF_MAX_EVENTS,
+    DEFAULT_EVENT_LIMIT_TYPE,
     DEFAULT_HOST,
+    DEFAULT_MAX_EVENT_DAYS,
     DEFAULT_MAX_EVENTS,
     DEFAULT_PORT,
     DEFAULT_USERNAME,
     DOMAIN,
     EVENT_COUNT_PRESETS,
+    EVENT_LIMIT_COUNT,
+    EVENT_LIMIT_DAYS,
+    MAX_EVENT_DAYS,
+    MIN_EVENT_DAYS,
     SERIAL_NUMBER,
 )
 
@@ -55,15 +63,48 @@ class ConnectResult(StrEnum):
     SUCCESS = "success"
 
 
-def _max_events_schema(current: int) -> dict[Any, Any]:
-    """Shared (config- and options-flow) schema for the history-depth field."""
+def _event_limit_schema_dict(current_options: Mapping[str, Any]) -> dict[Any, Any]:
+    """Shared (config- und options-flow) Schema für die Verlaufstiefe.
+
+    Seit v1.0.0, analog ``_history_schema_dict()`` in fritzbox_anrufe: ein
+    Modus-Auswahlfeld (Anzahl/Tage) plus je ein Feld für den jeweiligen
+    Grenzwert - anders als dort aber nur EIN Satz Felder (kein Loop über
+    mehrere Anruftypen), da diese Integration nur einen einzigen
+    Ereignisse-Sensor kennt.
+    """
     return {
-        vol.Optional(CONF_MAX_EVENTS, default=str(current)): selector.SelectSelector(
+        vol.Optional(
+            CONF_EVENT_LIMIT_TYPE,
+            default=current_options.get(CONF_EVENT_LIMIT_TYPE, DEFAULT_EVENT_LIMIT_TYPE),
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[EVENT_LIMIT_COUNT, EVENT_LIMIT_DAYS],
+                translation_key="event_limit_type",
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
+        vol.Optional(
+            CONF_MAX_EVENTS,
+            default=str(current_options.get(CONF_MAX_EVENTS, DEFAULT_MAX_EVENTS)),
+        ): selector.SelectSelector(
             selector.SelectSelectorConfig(
                 options=[str(preset) for preset in EVENT_COUNT_PRESETS],
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
-        )
+        ),
+        vol.Optional(
+            CONF_MAX_EVENT_DAYS,
+            default=current_options.get(CONF_MAX_EVENT_DAYS, DEFAULT_MAX_EVENT_DAYS),
+        ): vol.All(vol.Coerce(int), vol.Range(min=MIN_EVENT_DAYS, max=MAX_EVENT_DAYS)),
+    }
+
+
+def _parse_event_limit_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Extract/coerce the Verlaufstiefe-Felder aus dem Options-Formular."""
+    return {
+        CONF_EVENT_LIMIT_TYPE: user_input[CONF_EVENT_LIMIT_TYPE],
+        CONF_MAX_EVENTS: int(user_input[CONF_MAX_EVENTS]),
+        CONF_MAX_EVENT_DAYS: int(user_input[CONF_MAX_EVENT_DAYS]),
     }
 
 
@@ -156,7 +197,11 @@ class FritzBoxEreignisseConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_PASSWORD: self._password,
                 SERIAL_NUMBER: self._serial_number,
             },
-            options={CONF_MAX_EVENTS: DEFAULT_MAX_EVENTS},
+            options={
+                CONF_EVENT_LIMIT_TYPE: DEFAULT_EVENT_LIMIT_TYPE,
+                CONF_MAX_EVENTS: DEFAULT_MAX_EVENTS,
+                CONF_MAX_EVENT_DAYS: DEFAULT_MAX_EVENT_DAYS,
+            },
         )
 
     async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
@@ -227,11 +272,9 @@ class FritzBoxEreignisseOptionsFlowHandler(OptionsFlowWithReload):
     ) -> ConfigFlowResult:
         """Manage the single options-flow step."""
         if user_input is not None:
-            return self.async_create_entry(
-                data={CONF_MAX_EVENTS: int(user_input[CONF_MAX_EVENTS])}
-            )
+            return self.async_create_entry(data=_parse_event_limit_input(user_input))
 
-        current = self.config_entry.options.get(CONF_MAX_EVENTS, DEFAULT_MAX_EVENTS)
         return self.async_show_form(
-            step_id="init", data_schema=vol.Schema(_max_events_schema(current))
+            step_id="init",
+            data_schema=vol.Schema(_event_limit_schema_dict(self.config_entry.options)),
         )

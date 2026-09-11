@@ -36,8 +36,23 @@
       "init": {
         "title": "FRITZ!Box Ereignisse konfigurieren",
         "data": {
-          "max_events": "Anzahl gespeicherter Ereignisse"
+          "event_limit_type": "Modus",
+          "max_events": "Anzahl gespeicherter Ereignisse",
+          "max_event_days": "Anzahl Tage gespeicherter Ereignisse"
+        },
+        "data_description": {
+          "event_limit_type": "Legt fest, ob die Verlaufstiefe nach Anzahl oder nach Alter (Tage) begrenzt wird.",
+          "max_events": "Nur wirksam im Modus \"Anzahl Ereignisse\".",
+          "max_event_days": "Nur wirksam im Modus \"Anzahl Tage\"."
         }
+      }
+    }
+  },
+  "selector": {
+    "event_limit_type": {
+      "options": {
+        "count": "Anzahl Ereignisse",
+        "days": "Anzahl Tage"
       }
     }
   },

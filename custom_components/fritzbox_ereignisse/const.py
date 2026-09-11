@@ -101,6 +101,26 @@ CONF_MAX_EVENTS = "max_events"
 DEFAULT_MAX_EVENTS = 100
 EVENT_COUNT_PRESETS: Final[tuple[int, ...]] = (20, 50, 100, 200, 500)
 
+# --- Verlaufstiefe nach Tagen (seit v1.0.0) --------------------------------
+#
+# Analog CALL_LOG_LIMIT_COUNT/CALL_LOG_LIMIT_DAYS in fritzbox_anrufe: statt
+# ausschließlich nach Anzahl (siehe oben) kann die Verlaufstiefe wahlweise
+# auch nach Alter (Tage) begrenzt werden - hilfreich, wenn z. B. "die
+# Ereignisse der letzten 7 Tage" gewünscht sind, unabhängig davon, wie viele
+# das im Einzelfall sind. Anders als bei fritzbox_anrufe gibt es hier nur
+# EINEN Sensor (nicht drei unabhängige Anruflisten-Sensoren) - daher ein
+# einzelner Modus-Schalter statt einer Funktion je Anruftyp
+# (conf_call_log_limit_type() & Co.).
+CONF_EVENT_LIMIT_TYPE = "event_limit_type"
+EVENT_LIMIT_COUNT = "count"
+EVENT_LIMIT_DAYS = "days"
+DEFAULT_EVENT_LIMIT_TYPE = EVENT_LIMIT_COUNT
+
+CONF_MAX_EVENT_DAYS = "max_event_days"
+DEFAULT_MAX_EVENT_DAYS = 30
+MIN_EVENT_DAYS = 1
+MAX_EVENT_DAYS = 90
+
 # Event (Home-Assistant-Bus), gefeuert vom Coordinator, sobald ein
 # gegenüber dem vorherigen Abruf neuer Ereignis-Eintrag entdeckt wird -
 # direkt als Automations-Auslöser nutzbar. Bewusst NICHT beim allerersten
