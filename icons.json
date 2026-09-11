@@ -1,9 +1,0 @@
-{
-  "entity": {
-    "sensor": {
-      "fritzbox_ereignisse_ereignisse": {
-        "default": "mdi:message-alert-outline"
-      }
-    }
-  }
-}
