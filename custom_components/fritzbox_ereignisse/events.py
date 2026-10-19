@@ -1,3 +1,4 @@
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 6719c1f5d179ce58c348abb731596880c4c75e284d45af0163e61d4c7bb1348f
 """Fetch + parse the FRITZ!Box event log ("Ereignisse").
 
 Es gibt inzwischen DREI Wege zum selben Protokoll, das die FRITZ!Box-
@@ -149,6 +150,17 @@ Kategorien-Kürzel ("dect"/"vpn"/"network"/"smarthome") bleiben in
 einmal nativ als Gruppen-Kürzel liefert), werden aber seit v0.4.0 von
 der Text-Heuristik selbst nicht mehr vergeben.
 
+Fix in v1.1.0 - Abruf des XML-Protokolls (Issue #1)
+---------------------------------------------------
+Das Protokoll wurde bisher nur per HTTP geladen und ``<Event>``-Elemente
+nur in einer Schreibweise erkannt. Jetzt: zuerst HTTPS am SecurityPort der
+FRITZ!Box (``GetSecurityPort``, Rückfall 49443, selbst signiertes Zertifikat
+-> ``verify=False``), danach HTTP; Tags werden ohne Beachtung der Groß-/
+Kleinschreibung gelesen; eine HTML-Antwort (z. B. Anmeldeseite) gilt als
+Fehler statt als leeres Protokoll. Außerdem meldet der Koordinator seit
+v1.1.0 neue Einträge und Verbindungsverlust ans Notification Center
+(``notification_bridge.py``). Nicht an echter Hardware geprüft.
+
 Feature in v1.0.0 - Verlaufstiefe wahlweise nach Tagen statt nur Anzahl
 ---------------------------------------------------------------------
 Bisher (bis v0.4.0) wurde die Verlaufstiefe ausschließlich über eine feste
@@ -173,14 +185,15 @@ from datetime import datetime, timedelta
 import hashlib
 import logging
 import re
-from typing import Final
+from typing import Any, Final
 from urllib.parse import urljoin
+import warnings
 from xml.etree.ElementTree import Element, ParseError, fromstring
 
 from fritzconnection.core.exceptions import FritzConnectionException, FritzSecurityError
 from fritzconnection.core.fritzhttp import FritzHttp
-from fritzconnection.core.utils import get_content_from, get_xml_root
 from requests.exceptions import ConnectionError as RequestsConnectionError, RequestException
+from urllib3.exceptions import InsecureRequestWarning
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -190,12 +203,14 @@ from .base import FritzBoxDevice
 from .const import (
     ACTION_GET_DEVICE_LOG,
     ACTION_GET_DEVICE_LOG_PATH,
+    ACTION_GET_SECURITY_PORT,
     CONF_EVENT_LIMIT_TYPE,
     CONF_MAX_EVENT_DAYS,
     CONF_MAX_EVENTS,
     DEFAULT_EVENT_LIMIT_TYPE,
     DEFAULT_MAX_EVENT_DAYS,
     DEFAULT_MAX_EVENTS,
+    DEFAULT_SECURITY_PORT,
     DOMAIN,
     EVENT_GROUP_LABEL_UNKNOWN,
     EVENT_GROUP_LABELS,
@@ -203,13 +218,21 @@ from .const import (
     EVENT_LIMIT_DAYS,
     EVENT_NEW_EREIGNIS,
     MQ_LOG_SEPARATE_ALL,
+    NC_TYPE_CONNECTION_LOST,
+    NC_TYPE_DEFAULT_FOR_GROUP,
+    NC_TYPE_FOR_GROUP,
     QUERY_LUA_PATH,
     SERVICE_DEVICE_INFO,
 )
+from .notification_bridge import NotificationBridge
 
 _LOGGER = logging.getLogger(__name__)
 
 EVENTS_UPDATE_INTERVAL = timedelta(minutes=5)
+# Zeitlimit (Sekunden) für den Download der devicelog-XML (v1.1.0).
+LOG_XML_TIMEOUT: Final = 30
+# Obergrenze für den Meldungstext in einer Notification-Center-Meldung.
+NC_MESSAGE_MAX_LEN: Final = 300
 
 # Candidate output-argument names for X_AVM-DE_GetDeviceLogPath - AVMs
 # eigene TR-064-Namenskonvention wäre "NewX_AVM-DE_DeviceLogPath", eine
@@ -483,20 +506,33 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         # None bis zum ersten erfolgreichen Abruf - siehe _fire_new_events
         # für den Grund, warum dann bewusst NICHTS gefeuert wird.
         self._known_ids: set[str] | None = None
+        # HTTPS-Port der Box (GetSecurityPort), beim ersten Bedarf ermittelt.
+        self._security_port: int | None = None
+        # Notification Center (seit v1.1.0, optional - siehe
+        # notification_bridge.py). Wird von __init__.py gesetzt; ohne
+        # Notification Center passiert nichts.
+        self.nc: NotificationBridge | None = None
+        self._nc_connection_lost = False
+        # Anzahl tatsächlich gesendeter Meldungen je Art (nur Zähler, für die
+        # Diagnose - keine Inhalte).
+        self.nc_sent: dict[str, int] = {}
 
     async def _async_update_data(self) -> list[FritzEvent]:
         """Fetch the current event log (executor job, TR-064 + optional HTTP)."""
         try:
             events = await self.hass.async_add_executor_job(self._fetch)
         except FritzSecurityError as ex:
+            self._nc_set_connection_lost(True)
             raise UpdateFailed(
                 "Dem FRITZ!Box-Konto fehlt die Berechtigung"
                 f" 'FRITZ!Box-Einstellungen' für den Zugriff auf das"
                 f" Ereignisprotokoll: {ex}"
             ) from ex
         except (FritzConnectionException, RequestsConnectionError, RequestException) as ex:
+            self._nc_set_connection_lost(True)
             raise UpdateFailed(f"Fehler beim Abrufen der FRITZ!Box-Ereignisse: {ex}") from ex
 
+        self._nc_set_connection_lost(False)
         limit_type, limit_value = _limit_for(self.config_entry)
         events = _apply_event_limit(_sorted_newest_first(events), limit_type, limit_value)
         self._fire_new_events(events)
@@ -595,30 +631,63 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
             )
             return None
 
-        origin = FritzHttp(fc).router_url
-        url = urljoin(origin, path)
-        try:
-            root = get_xml_root(url, session=fc.session)
-        except ParseError as ex:
-            # v0.2.0: einmaliger Reparaturversuch statt sofort aufzugeben -
-            # siehe Moduldoku ("Fix in v0.2.0") für die Ursache. Schlägt
-            # auch DAS fehl, wird die (dann zweite) ParseError vom
-            # aufrufenden _fetch() breit abgefangen und löst dort den
-            # Rückfall auf Weg 2 aus - hier wird bewusst nichts geschluckt.
+        # v1.1.0 (Issue #1): Der Pfad wird zuerst über HTTPS am von der Box
+        # gemeldeten Sicherheits-Port (GetSecurityPort, meist 49443) geholt,
+        # erst danach über das bisherige HTTP. Auf manchen Boxen/Firmwares
+        # (z. B. 6690 Cable, FRITZ!OS 8.25) liefert HTTP/Port 80 für
+        # /devicelog.lua nur eine HTML-Fehlerseite.
+        last_error: Exception | None = None
+        for origin in self._log_origins(fc):
+            url = urljoin(origin, path)
+            try:
+                events = _parse_log_xml(_download_log_xml(fc.session, url))
+            except Exception as ex:  # noqa: BLE001 - nächster Ursprung / Rückfall
+                last_error = ex
+                _LOGGER.debug(
+                    "Ereignisse: devicelog.lua über %s fehlgeschlagen (%s: %s)",
+                    origin.split("://", 1)[0],
+                    type(ex).__name__,
+                    ex,
+                )
+                continue
+            if events is not None:
+                return events
             _LOGGER.debug(
-                "Ereignisse: devicelog-XML nicht wohlgeformt (%s) - versuche"
-                " Reparatur (Steuerzeichen/bloße '&' escapen)",
+                "Ereignisse: devicelog-XML über %s enthielt keine <Event>-Einträge",
+                origin.split("://", 1)[0],
+            )
+        if last_error is not None:
+            raise last_error
+        return None
+
+    def _log_origins(self, fc: Any) -> list[str]:
+        """Basis-URLs für den devicelog-Abruf: HTTPS (SecurityPort), dann HTTP."""
+        host = str(fc.address)
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"  # IPv6-Literal
+        origins = [f"https://{host}:{self._get_security_port(fc)}"]
+        origins.append(FritzHttp(fc).router_url)
+        return origins
+
+    def _get_security_port(self, fc: Any) -> int:
+        """Sicherheits-Port (HTTPS) der Box per TR-064; Standard 49443 als Rückfall."""
+        if self._security_port is not None:
+            return self._security_port
+        port = DEFAULT_SECURITY_PORT
+        try:
+            result = fc.call_action(SERVICE_DEVICE_INFO, ACTION_GET_SECURITY_PORT)
+            candidate = int(result.get("NewSecurityPort"))
+            if 0 < candidate < 65536:
+                port = candidate
+        except Exception as ex:  # noqa: BLE001 - Standardport genügt als Rückfall
+            _LOGGER.debug(
+                "Ereignisse: GetSecurityPort fehlgeschlagen (%s: %s) - verwende %s",
+                type(ex).__name__,
                 ex,
+                DEFAULT_SECURITY_PORT,
             )
-            raw = get_content_from(url, session=fc.session)
-            root = fromstring(_sanitize_xml_text(raw))
-        events = [
-            FritzEvent.from_xml_fields(
-                {child.tag.lower(): (child.text or "").strip() for child in event_el}
-            )
-            for event_el in _iter_event_elements(root)
-        ]
-        return events
+        self._security_port = port
+        return port
 
     def _fetch_via_plain_log(self) -> list[FritzEvent]:
         """Plain-text fallback (``GetDeviceLog`` -> ``NewDeviceLog``)."""
@@ -641,9 +710,12 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         if self._known_ids is not None:
             new_ids = current_ids - self._known_ids
             if new_ids:
-                by_id = {event.id: event for event in events}
-                for event_id in new_ids:
-                    event = by_id[event_id]
+                # Älteste zuerst (events ist neueste-zuerst sortiert), damit
+                # Automationen und das Notification Center die Einträge in
+                # zeitlicher Reihenfolge erhalten.
+                for event in reversed(events):
+                    if event.id not in new_ids:
+                        continue
                     self.hass.bus.async_fire(
                         EVENT_NEW_EREIGNIS,
                         {
@@ -651,7 +723,76 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
                             **event.to_dict(),
                         },
                     )
+                    self._nc_report_event(event)
         self._known_ids = current_ids
+
+    # --- Notification Center (seit v1.1.0) --------------------------------
+
+    def _nc_subject(self) -> dict[str, str]:
+        """Objekt, auf das sich die Meldungen beziehen (keine Seriennummer)."""
+        return {
+            "id": self.config_entry.entry_id,
+            "name": self._device.modelname or "FRITZ!Box",
+            "kind": "network",
+        }
+
+    def _nc_count(self, type_: str) -> None:
+        self.nc_sent[type_] = self.nc_sent.get(type_, 0) + 1
+
+    def _nc_report_event(self, event: FritzEvent) -> None:
+        """Neuen Protokolleintrag als Einzelereignis ans Notification Center melden."""
+        nc = self.nc
+        if nc is None:
+            return
+        type_ = NC_TYPE_FOR_GROUP.get(event.group, NC_TYPE_DEFAULT_FOR_GROUP)
+        if not nc.type_enabled(type_):
+            return
+        nc.report(
+            type_,
+            event.id,
+            "active",
+            subject=self._nc_subject(),
+            placeholders={"message": event.message[:NC_MESSAGE_MAX_LEN]},
+            data={
+                "group": event.group,
+                "date": event.timestamp.isoformat() if event.timestamp else None,
+            },
+        )
+        self._nc_count(type_)
+
+    def _nc_set_connection_lost(self, lost: bool) -> None:
+        """Verbindungsverlust melden (nur bei Zustandswechsel, keine Wiederholung)."""
+        if lost == self._nc_connection_lost:
+            return
+        self._nc_connection_lost = lost
+        nc = self.nc
+        if nc is None or not nc.type_enabled(NC_TYPE_CONNECTION_LOST):
+            return
+        subject = self._nc_subject()
+        nc.report(
+            NC_TYPE_CONNECTION_LOST,
+            self.config_entry.entry_id,
+            "active" if lost else "resolved",
+            subject=subject,
+            placeholders={"name": subject["name"]},
+        )
+        if lost:
+            self._nc_count(NC_TYPE_CONNECTION_LOST)
+
+    def nc_active_state(self) -> dict[str, list[dict[str, Any]]]:
+        """Aktive, auflösbare Zustände für Ausgangszustand und Sync (siehe Brücke)."""
+        if not self._nc_connection_lost:
+            return {NC_TYPE_CONNECTION_LOST: []}
+        subject = self._nc_subject()
+        return {
+            NC_TYPE_CONNECTION_LOST: [
+                {
+                    "key": self.config_entry.entry_id,
+                    "subject": subject,
+                    "placeholders": {"name": subject["name"]},
+                }
+            ]
+        }
 
 
 def _extract_log_path(result: dict[str, object]) -> str | None:
@@ -726,9 +867,69 @@ def _sanitize_xml_text(text: str) -> str:
     return _BARE_AMPERSAND_RE.sub("&amp;", text)
 
 
+def _local_name(tag: object) -> str:
+    """Tag-Name ohne XML-Namespace (``{ns}Event`` -> ``Event``)."""
+    text = tag if isinstance(tag, str) else ""
+    return text.rsplit("}", 1)[-1]
+
+
 def _iter_event_elements(root: Element):
-    """Yield every ``<event>`` element, regardless of exact nesting depth."""
-    yield from root.iter("event")
+    """Yield every event element, regardless of nesting depth and spelling.
+
+    v1.1.0 (Issue #1): FRITZ!OS 8.25 liefert ``<Event>`` (großes E), ältere
+    Stände ``<event>`` - der Vergleich ist daher unabhängig von der Groß-/
+    Kleinschreibung (und ignoriert einen evtl. vorhandenen Namespace).
+    """
+    for element in root.iter():
+        if _local_name(element.tag).lower() == "event":
+            yield element
+
+
+def _download_log_xml(session: Any, url: str) -> bytes:
+    """Lädt die devicelog-XML (BLOCKING). Löst bei HTML-Antworten einen Fehler aus.
+
+    ``verify=False``: Die FRITZ!Box nutzt am Sicherheits-Port ein selbst
+    signiertes Zertifikat. Die Verbindung geht ausschließlich zur
+    konfigurierten FRITZ!Box im lokalen Netz; die sid steckt bereits in der
+    URL. Die Zertifikatswarnung wird nur für diesen einen Aufruf
+    unterdrückt.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", InsecureRequestWarning)
+        response = session.get(url, verify=False, timeout=LOG_XML_TIMEOUT)
+    response.raise_for_status()
+    content: bytes = response.content
+    head = content[:300].lstrip().lower()
+    if head.startswith((b"<!doctype html", b"<html")):
+        raise ValueError("HTML-Seite statt devicelog-XML erhalten")
+    return content
+
+
+def _parse_log_xml(content: bytes) -> list[FritzEvent] | None:
+    """Parst die devicelog-XML. ``None``, wenn kein einziger Eintrag gefunden wurde.
+
+    Bei kaputtem XML gibt es genau einen Reparaturversuch (siehe Moduldoku,
+    "Fix in v0.2.0"); schlägt auch der fehl, wird der ``ParseError`` an den
+    Aufrufer durchgereicht.
+    """
+    try:
+        root = fromstring(content)
+    except ParseError as ex:
+        _LOGGER.debug(
+            "Ereignisse: devicelog-XML nicht wohlgeformt (%s) - versuche"
+            " Reparatur (Steuerzeichen/bloße '&' escapen)",
+            ex,
+        )
+        root = fromstring(_sanitize_xml_text(content.decode("utf-8", errors="replace")))
+    elements = list(_iter_event_elements(root))
+    if not elements:
+        return None
+    return [
+        FritzEvent.from_xml_fields(
+            {_local_name(child.tag).lower(): (child.text or "").strip() for child in element}
+        )
+        for element in elements
+    ]
 
 
 def _sorted_newest_first(events: list[FritzEvent]) -> list[FritzEvent]:

@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurer FRITZ!Box Ereignisse",
+        "description": "Identifiants du compte utilisateur FRITZ!Box autorisé pour l'accès TR-064 (droit « Paramètres de la FRITZ!Box »).",
+        "data": {
+          "host": "Hôte/IP",
+          "port": "Port",
+          "username": "Nom d'utilisateur",
+          "password": "Mot de passe"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Renouveler les identifiants",
+        "description": "La connexion à la FRITZ!Box sur {host} a échoué. Vérifie le nom d'utilisateur et le mot de passe.",
+        "data": {
+          "username": "Nom d'utilisateur",
+          "password": "Mot de passe"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Échec de la connexion. Vérifie le nom d'utilisateur et le mot de passe.",
+      "insufficient_permissions": "Le compte n'a pas le droit « Paramètres de la FRITZ!Box ».",
+      "no_devices_found": "FRITZ!Box inaccessible à cette adresse/ce port.",
+      "unknown": "Erreur inattendue. Consulte le journal de Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Cet appareil FRITZ!Box est déjà configuré.",
+      "reauth_successful": "Identifiants renouvelés avec succès."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurer FRITZ!Box Ereignisse",
+        "description": "Version installée : {version}\n\n{update_info}",
+        "data": {
+          "event_limit_type": "Mode",
+          "max_events": "Nombre d'événements conservés",
+          "max_event_days": "Nombre de jours d'événements conservés",
+          "nc_enabled": "Envoyer les notifications au Notification Center",
+          "nc_types": "Types de notifications envoyés"
+        },
+        "data_description": {
+          "event_limit_type": "Définit si la profondeur de l'historique est limitée par nombre ou par ancienneté (jours).",
+          "max_events": "Uniquement actif en mode « Nombre d'événements ».",
+          "max_event_days": "Uniquement actif en mode « Nombre de jours ».",
+          "nc_enabled": "Interrupteur principal. Sans Notification Center installé, il ne se passe rien.",
+          "nc_types": "Uniquement actif si l'interrupteur principal est activé. Téléphonie et Wi-Fi sont désactivés par défaut, car ils génèrent beaucoup d'entrées."
+        }
+      }
+    }
+  },
+  "selector": {
+    "event_limit_type": {
+      "options": {
+        "count": "Nombre d'événements",
+        "days": "Nombre de jours"
+      }
+    },
+    "nc_types": {
+      "options": {
+        "connection_lost": "Connexion à la FRITZ!Box perdue",
+        "event_sys": "Événements : Système",
+        "event_internet": "Événements : Connexion Internet",
+        "event_usb": "Événements : Appareils USB",
+        "event_tel": "Événements : Téléphonie",
+        "event_wlan": "Événements : Wi-Fi"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "fritzbox_ereignisse_ereignisse": {
+        "name": "Événements"
+      }
+    }
+  }
+}

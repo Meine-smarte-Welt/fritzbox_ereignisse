@@ -1,3 +1,4 @@
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 3f409f69666f5df0afae51375cef8e90cfd62731661457b98c5a030419ee991f
 """Constants for the FRITZ!Box Ereignisse integration."""
 
 from __future__ import annotations
@@ -8,6 +9,12 @@ from homeassistant.const import Platform
 
 DOMAIN: Final = "fritzbox_ereignisse"
 MANUFACTURER: Final = "FRITZ!"
+
+# Version der Integration. MUSS mit manifest.json und CARD_VERSION in
+# www/fritzbox-ereignisse-card.js übereinstimmen (Prüfung vor jedem Release).
+VERSION: Final = "1.1.0"
+GITHUB_REPO: Final = "Meine-smarte-Welt/fritzbox_ereignisse"
+GITHUB_RELEASES_URL: Final = f"https://github.com/{GITHUB_REPO}/releases"
 
 PLATFORMS: Final = [Platform.SENSOR]
 
@@ -43,6 +50,10 @@ DEFAULT_USERNAME = "admin"
 SERVICE_DEVICE_INFO = "DeviceInfo:1"
 ACTION_GET_DEVICE_LOG_PATH = "X_AVM-DE_GetDeviceLogPath"
 ACTION_GET_DEVICE_LOG = "GetDeviceLog"
+# Seit v1.1.0 (Issue #1): HTTPS-Port der Box für /devicelog.lua. Der Wert
+# wird per TR-064 (GetSecurityPort) ermittelt; 49443 ist nur der Rückfall.
+ACTION_GET_SECURITY_PORT = "GetSecurityPort"
+DEFAULT_SECURITY_PORT: Final = 49443
 
 # --- Web-UI-interner "query.lua"-Weg (Weg 0, seit v0.3.0, EXPERIMENTELL) ---
 #
@@ -128,3 +139,34 @@ MAX_EVENT_DAYS = 90
 # EVENT_NEW_VOICEMAIL_MESSAGE in fritzbox_anrufe), sonst gäbe es bei jedem
 # Home-Assistant-Neustart Events für längst bekannte, alte Einträge.
 EVENT_NEW_EREIGNIS = f"{DOMAIN}_new_event"
+
+# --- Notification Center (Schnittstelle Schema 1, seit v1.1.0) --------------
+#
+# Meldungsarten dieser Integration - der Katalog mit allen fünf Sprachen steht
+# in nc_catalog.py. "connection_lost" ist auflösbar (Verbindung wieder da);
+# die event_*-Arten sind Einzelereignisse (je neuer Eintrag im Protokoll der
+# FRITZ!Box, nicht auflösbar - sie bleiben, bis der Nutzer sie im
+# Notification Center quittiert).
+NC_TYPE_CONNECTION_LOST: Final = "connection_lost"
+NC_TYPE_EVENT_SYS: Final = "event_sys"
+NC_TYPE_EVENT_INTERNET: Final = "event_internet"
+NC_TYPE_EVENT_TEL: Final = "event_tel"
+NC_TYPE_EVENT_WLAN: Final = "event_wlan"
+NC_TYPE_EVENT_USB: Final = "event_usb"
+
+# Kategorie-Kürzel des Protokolls -> Meldungsart. Alles Unbekannte (auch
+# "sonstiges", "vpn", "dect", ...) fällt auf "System" - wie in der Karte
+# ("System" ist der Auffang-Wert, siehe EVENT_GROUP_LABELS).
+NC_TYPE_FOR_GROUP: Final[dict[str, str]] = {
+    "sys": NC_TYPE_EVENT_SYS,
+    "system": NC_TYPE_EVENT_SYS,
+    "internet": NC_TYPE_EVENT_INTERNET,
+    "dsl": NC_TYPE_EVENT_INTERNET,
+    "wan": NC_TYPE_EVENT_INTERNET,
+    "tel": NC_TYPE_EVENT_TEL,
+    "fon": NC_TYPE_EVENT_TEL,
+    "wlan": NC_TYPE_EVENT_WLAN,
+    "usb": NC_TYPE_EVENT_USB,
+    "storage": NC_TYPE_EVENT_USB,
+}
+NC_TYPE_DEFAULT_FOR_GROUP: Final = NC_TYPE_EVENT_SYS

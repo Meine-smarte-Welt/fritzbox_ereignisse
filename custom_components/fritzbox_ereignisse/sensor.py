@@ -1,3 +1,4 @@
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 365df7541c77c357a1c3f71ef6ed4f7cb87043333816d74fdc9bbd6d525550ba
 """Sensor platform for fritzbox_ereignisse."""
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ async def async_setup_entry(
         [
             FritzBoxEreignisseSensor(
                 coordinator=runtime_data.coordinator,
+                runtime_data=runtime_data,
                 unique_id=f"{serial_number}-ereignisse",
                 device_info=device_info,
             )
@@ -47,12 +49,24 @@ class FritzBoxEreignisseSensor(CoordinatorEntity[FritzEventsCoordinator], Sensor
     _attr_translation_key = f"{DOMAIN}_ereignisse"
     _attr_native_unit_of_measurement = "Ereignisse"
     _attr_icon = "mdi:message-alert-outline"
+    # Issue #2 (v1.1.0): Mit 90 Tagen Verlauf überschreitet "events" die
+    # Obergrenze des Recorders (16384 Byte je Zustand) - der Recorder warnt
+    # dann und speichert die Attribute gar nicht. Die Liste, die Update-Infos
+    # und der Notification-Center-Stand sind reine Live-Daten für die Karte
+    # und müssen nicht in die Datenbank. "groups" und "source" sind klein
+    # und bleiben erhalten.
+    _unrecorded_attributes = frozenset({"events", "app", "notification_center"})
 
     def __init__(
-        self, coordinator: FritzEventsCoordinator, unique_id: str, device_info: DeviceInfo
+        self,
+        coordinator: FritzEventsCoordinator,
+        runtime_data: FritzBoxEreignisseRuntimeData,
+        unique_id: str,
+        device_info: DeviceInfo,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        self._runtime_data = runtime_data
         self._attr_unique_id = unique_id
         self._attr_device_info = device_info
 
@@ -86,4 +100,9 @@ class FritzBoxEreignisseSensor(CoordinatorEntity[FritzEventsCoordinator], Sensor
             # zwangsläufig "keine Kategorien". None, solange noch kein
             # erfolgreicher Abruf stattgefunden hat.
             "source": self.coordinator.last_source,
+            # Seit v1.1.0 (nicht aufgezeichnet, siehe oben): Versionsanzeige
+            # mit Update-Hinweis und Stand des Notification Centers für die
+            # Einstellungen in der Karte.
+            "app": self._runtime_data.update_checker.as_dict(),
+            "notification_center": self._runtime_data.nc.snapshot(),
         }

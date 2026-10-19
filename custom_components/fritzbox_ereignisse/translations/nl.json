@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "FRITZ!Box Ereignisse instellen",
+        "description": "Inloggegevens van het FRITZ!Box-gebruikersaccount dat is vrijgegeven voor TR-064-toegang (recht \"FRITZ!Box-instellingen\").",
+        "data": {
+          "host": "Host/IP",
+          "port": "Poort",
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Inloggegevens vernieuwen",
+        "description": "Inloggen bij de FRITZ!Box op {host} is mislukt. Controleer gebruikersnaam/wachtwoord.",
+        "data": {
+          "username": "Gebruikersnaam",
+          "password": "Wachtwoord"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Inloggen mislukt. Controleer gebruikersnaam/wachtwoord.",
+      "insufficient_permissions": "Het gebruikersaccount mist het recht \"FRITZ!Box-instellingen\".",
+      "no_devices_found": "FRITZ!Box niet bereikbaar op dit adres/deze poort.",
+      "unknown": "Onverwachte fout. Controleer het Home Assistant-logboek."
+    },
+    "abort": {
+      "already_configured": "Dit FRITZ!Box-apparaat is al ingesteld.",
+      "reauth_successful": "Inloggegevens succesvol vernieuwd."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "FRITZ!Box Ereignisse configureren",
+        "description": "Geïnstalleerde versie: {version}\n\n{update_info}",
+        "data": {
+          "event_limit_type": "Modus",
+          "max_events": "Aantal opgeslagen gebeurtenissen",
+          "max_event_days": "Aantal dagen aan opgeslagen gebeurtenissen",
+          "nc_enabled": "Meldingen naar het Notification Center sturen",
+          "nc_types": "Verzonden meldingstypen"
+        },
+        "data_description": {
+          "event_limit_type": "Bepaalt of de historiediepte wordt beperkt op aantal of op leeftijd (dagen).",
+          "max_events": "Alleen actief in de modus \"Aantal gebeurtenissen\".",
+          "max_event_days": "Alleen actief in de modus \"Aantal dagen\".",
+          "nc_enabled": "Hoofdschakelaar. Zonder geïnstalleerd Notification Center gebeurt er niets.",
+          "nc_types": "Alleen actief als de hoofdschakelaar aan staat. Telefonie en WLAN staan standaard uit, omdat daar veel meldingen ontstaan."
+        }
+      }
+    }
+  },
+  "selector": {
+    "event_limit_type": {
+      "options": {
+        "count": "Aantal gebeurtenissen",
+        "days": "Aantal dagen"
+      }
+    },
+    "nc_types": {
+      "options": {
+        "connection_lost": "Verbinding met FRITZ!Box verbroken",
+        "event_sys": "Gebeurtenissen: Systeem",
+        "event_internet": "Gebeurtenissen: Internetverbinding",
+        "event_usb": "Gebeurtenissen: USB-apparaten",
+        "event_tel": "Gebeurtenissen: Telefonie",
+        "event_wlan": "Gebeurtenissen: WLAN"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "fritzbox_ereignisse_ereignisse": {
+        "name": "Gebeurtenissen"
+      }
+    }
+  }
+}

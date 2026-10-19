@@ -1,3 +1,4 @@
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 2271aa2d4f5f0bc7feae9144198aa11570ee4793edf66a6bb60ea22476d90fa7
 """Config flow for fritzbox_ereignisse."""
 
 from __future__ import annotations
@@ -39,7 +40,11 @@ from .const import (
     MAX_EVENT_DAYS,
     MIN_EVENT_DAYS,
     SERIAL_NUMBER,
+    VERSION,
 )
+from .nc_catalog import NC_CATALOG
+from .notification_bridge import OPT_ENABLED, OPT_TYPES, SEVERITIES
+from .update_check import format_update_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,6 +101,45 @@ def _event_limit_schema_dict(current_options: Mapping[str, Any]) -> dict[Any, An
             CONF_MAX_EVENT_DAYS,
             default=current_options.get(CONF_MAX_EVENT_DAYS, DEFAULT_MAX_EVENT_DAYS),
         ): vol.All(vol.Coerce(int), vol.Range(min=MIN_EVENT_DAYS, max=MAX_EVENT_DAYS)),
+    }
+
+
+def _nc_types_by_severity() -> list[dict[str, Any]]:
+    """Katalogeinträge nach Dringlichkeit sortiert (kritisch zuerst)."""
+    order = {severity: index for index, severity in enumerate(SEVERITIES)}
+    return sorted(NC_CATALOG, key=lambda item: order[item["severity"]])
+
+
+def _nc_schema_dict(current_options: Mapping[str, Any]) -> dict[Any, Any]:
+    """Notification-Center-Felder des Optionen-Dialogs (seit v1.1.0)."""
+    chosen = current_options.get(OPT_TYPES, {})
+    types = _nc_types_by_severity()
+    enabled_now = [
+        item["type"]
+        for item in types
+        if chosen.get(item["type"], item.get("enabled_default", True))
+    ]
+    return {
+        vol.Optional(
+            OPT_ENABLED, default=bool(current_options.get(OPT_ENABLED, True))
+        ): selector.BooleanSelector(),
+        vol.Optional(OPT_TYPES, default=enabled_now): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[item["type"] for item in types],
+                multiple=True,
+                translation_key="nc_types",
+                mode=selector.SelectSelectorMode.LIST,
+            )
+        ),
+    }
+
+
+def _parse_nc_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """Notification-Center-Felder in das Optionen-Format der Brücke umwandeln."""
+    selected = set(user_input.get(OPT_TYPES, []))
+    return {
+        OPT_ENABLED: bool(user_input.get(OPT_ENABLED, True)),
+        OPT_TYPES: {item["type"]: item["type"] in selected for item in NC_CATALOG},
     }
 
 
@@ -201,6 +245,10 @@ class FritzBoxEreignisseConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_EVENT_LIMIT_TYPE: DEFAULT_EVENT_LIMIT_TYPE,
                 CONF_MAX_EVENTS: DEFAULT_MAX_EVENTS,
                 CONF_MAX_EVENT_DAYS: DEFAULT_MAX_EVENT_DAYS,
+                OPT_ENABLED: True,
+                OPT_TYPES: {
+                    item["type"]: bool(item.get("enabled_default", True)) for item in NC_CATALOG
+                },
             },
         )
 
@@ -272,9 +320,23 @@ class FritzBoxEreignisseOptionsFlowHandler(OptionsFlowWithReload):
     ) -> ConfigFlowResult:
         """Manage the single options-flow step."""
         if user_input is not None:
-            return self.async_create_entry(data=_parse_event_limit_input(user_input))
+            return self.async_create_entry(
+                data={**_parse_event_limit_input(user_input), **_parse_nc_input(user_input)}
+            )
 
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        update_info = (
+            format_update_info(runtime.update_checker.as_dict(), self.hass.config.language)
+            if runtime is not None
+            else ""
+        )
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(_event_limit_schema_dict(self.config_entry.options)),
+            data_schema=vol.Schema(
+                {
+                    **_event_limit_schema_dict(self.config_entry.options),
+                    **_nc_schema_dict(self.config_entry.options),
+                }
+            ),
+            description_placeholders={"version": VERSION, "update_info": update_info},
         )

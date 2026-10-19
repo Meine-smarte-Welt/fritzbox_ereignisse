@@ -35,15 +35,20 @@
     "step": {
       "init": {
         "title": "FRITZ!Box Ereignisse konfigurieren",
+        "description": "Installierte Version: {version}\n\n{update_info}",
         "data": {
           "event_limit_type": "Modus",
           "max_events": "Anzahl gespeicherter Ereignisse",
-          "max_event_days": "Anzahl Tage gespeicherter Ereignisse"
+          "max_event_days": "Anzahl Tage gespeicherter Ereignisse",
+          "nc_enabled": "Meldungen an das Notification Center senden",
+          "nc_types": "Gesendete Meldungsarten"
         },
         "data_description": {
           "event_limit_type": "Legt fest, ob die Verlaufstiefe nach Anzahl oder nach Alter (Tage) begrenzt wird.",
           "max_events": "Nur wirksam im Modus \"Anzahl Ereignisse\".",
-          "max_event_days": "Nur wirksam im Modus \"Anzahl Tage\"."
+          "max_event_days": "Nur wirksam im Modus \"Anzahl Tage\".",
+          "nc_enabled": "Hauptschalter. Ist das Notification Center nicht installiert, passiert nichts.",
+          "nc_types": "Nur wirksam, wenn der Hauptschalter an ist. Telefonie und WLAN sind standardmäßig aus, weil dort viele Einträge entstehen."
         }
       }
     }
@@ -53,6 +58,16 @@
       "options": {
         "count": "Anzahl Ereignisse",
         "days": "Anzahl Tage"
+      }
+    },
+    "nc_types": {
+      "options": {
+        "connection_lost": "Verbindung zur FRITZ!Box verloren",
+        "event_sys": "Ereignisse: System",
+        "event_internet": "Ereignisse: Internetverbindung",
+        "event_usb": "Ereignisse: USB-Geräte",
+        "event_tel": "Ereignisse: Telefonie",
+        "event_wlan": "Ereignisse: WLAN"
       }
     }
   },

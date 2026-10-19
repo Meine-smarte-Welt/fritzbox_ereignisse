@@ -35,15 +35,20 @@
     "step": {
       "init": {
         "title": "Configure FRITZ!Box Ereignisse",
+        "description": "Installed version: {version}\n\n{update_info}",
         "data": {
           "event_limit_type": "Mode",
           "max_events": "Number of stored events",
-          "max_event_days": "Number of days of stored events"
+          "max_event_days": "Number of days of stored events",
+          "nc_enabled": "Send messages to the Notification Center",
+          "nc_types": "Message types sent"
         },
         "data_description": {
           "event_limit_type": "Whether the retention depth is limited by count or by age (days).",
           "max_events": "Only used in \"Number of events\" mode.",
-          "max_event_days": "Only used in \"Number of days\" mode."
+          "max_event_days": "Only used in \"Number of days\" mode.",
+          "nc_enabled": "Main switch. Nothing happens if the Notification Center is not installed.",
+          "nc_types": "Only used when the main switch is on. Telephony and Wi-Fi are off by default because they produce many entries."
         }
       }
     }
@@ -53,6 +58,16 @@
       "options": {
         "count": "Number of events",
         "days": "Number of days"
+      }
+    },
+    "nc_types": {
+      "options": {
+        "connection_lost": "Connection to FRITZ!Box lost",
+        "event_sys": "Events: System",
+        "event_internet": "Events: Internet connection",
+        "event_usb": "Events: USB devices",
+        "event_tel": "Events: Telephony",
+        "event_wlan": "Events: Wi-Fi"
       }
     }
   },

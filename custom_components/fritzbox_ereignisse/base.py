@@ -1,3 +1,4 @@
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 7276aefad9d6156272f014ffd7d3f008b489ad6597c6f475a36f76a9e67132a9
 """Connection helper + shared device info for fritzbox_ereignisse."""
 
 from __future__ import annotations

@@ -1,0 +1,9 @@
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 6e9c251a462faa8ee1f481a9df7a833dc2cce6759c9be2c202084a23f4bd5b41
+# Karte mit allen Kategorien, Start im Tab "Internetverbindung"
+type: custom:fritzbox-ereignisse-card
+entity: sensor.fritzbox_ereignisse_ereignisse
+title: FRITZ!Box Ereignisse
+default_tab: internet
+max_rows: 15
+show_search: true
+read_only: false

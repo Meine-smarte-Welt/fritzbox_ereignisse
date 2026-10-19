@@ -1,0 +1,14 @@
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 9ebfb8279c95ea23df14482f9f76d1992ef1654faa5aa6226bf20289cff9fdc2
+# Automation: auf neue Einträge im Ereignisprotokoll reagieren
+alias: FRITZ!Box - neues Ereignis
+triggers:
+  - trigger: event
+    event_type: fritzbox_ereignisse_new_event
+conditions:
+  - condition: template
+    value_template: "{{ trigger.event.data.group == 'internet' }}"
+actions:
+  - action: persistent_notification.create
+    data:
+      title: "FRITZ!Box"
+      message: "{{ trigger.event.data.message }}"
