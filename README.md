@@ -8,7 +8,6 @@ Home-Assistant-Integration, die das **Ereignisprotokoll** der FRITZ!Box ("System
   <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Meine-smarte-Welt&amp;repository=fritzbox_ereignisse&amp;category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Repository in Home Assistant öffnen" height="32"></a>
 </p>
 
-![Version](https://img.shields.io/badge/Version-2.0.3-blue)
 ![HACS](https://img.shields.io/badge/HACS-Custom-orange)
 
 **Version 1.1.0.** Teststand: siehe [Bekannte Einschränkungen](#bekannte-einschränkungen). Die Übersetzungen (nl, fr, es) sind maschinell erstellt, Korrekturen sind willkommen.
