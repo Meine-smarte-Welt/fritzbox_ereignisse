@@ -1,4 +1,4 @@
-// SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 5dbb64b48d0615c2ffda5836cb5464d1bf48a9468bae2f15327c1fa92a71d8a2
+// SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): a75050d1e8e59c7b67e80f654293630869b2204476d74dba3348a28b8f38552a
 // fritzbox-ereignisse-card.js - v1.1.0
 //
 // Lovelace-Karte für die fritzbox_ereignisse-Integration: zeigt das
@@ -82,6 +82,9 @@ const I18N = {
       "Meldungen werden gesendet, sobald das Notification Center installiert ist.",
     nc_master: "Meldungen an das Notification Center senden",
     nc_types: "Meldungsarten",
+    experimental: "Experimentell",
+    exp_hint:
+      "Experimentelle Funktion: ungeprüft und standardmäßig aus. Sie ist nur sichtbar, weil die experimentellen Funktionen eingeschaltet sind.",
     nc_admin_only: "Nur Administratoren können diese Einstellungen ändern.",
     nc_unavailable: "Die Integration liefert noch keine Notification-Center-Daten. Bitte Home Assistant neu starten.",
     sev_critical: "Kritisch",
@@ -129,6 +132,9 @@ const I18N = {
       "Messages will be sent as soon as the Notification Center is installed.",
     nc_master: "Send messages to the Notification Center",
     nc_types: "Message types",
+    experimental: "Experimental",
+    exp_hint:
+      "Experimental feature: untested and off by default. It is only visible because experimental features are switched on.",
     nc_admin_only: "Only administrators can change these settings.",
     nc_unavailable: "The integration does not provide Notification Center data yet. Please restart Home Assistant.",
     sev_critical: "Critical",
@@ -176,6 +182,9 @@ const I18N = {
       "Meldingen worden verzonden zodra het Notification Center is geïnstalleerd.",
     nc_master: "Meldingen naar het Notification Center sturen",
     nc_types: "Meldingstypen",
+    experimental: "Experimenteel",
+    exp_hint:
+      "Experimentele functie: ongetest en standaard uit. Ze is alleen zichtbaar omdat experimentele functies zijn ingeschakeld.",
     nc_admin_only: "Alleen beheerders kunnen deze instellingen wijzigen.",
     nc_unavailable: "De integratie levert nog geen Notification Center-gegevens. Herstart Home Assistant.",
     sev_critical: "Kritiek",
@@ -223,6 +232,9 @@ const I18N = {
       "Les notifications seront envoyées dès que le Notification Center sera installé.",
     nc_master: "Envoyer les notifications au Notification Center",
     nc_types: "Types de notifications",
+    experimental: "Expérimental",
+    exp_hint:
+      "Fonction expérimentale : non testée et désactivée par défaut. Elle n'est visible que parce que les fonctions expérimentales sont activées.",
     nc_admin_only: "Seuls les administrateurs peuvent modifier ces paramètres.",
     nc_unavailable: "L'intégration ne fournit pas encore de données Notification Center. Redémarre Home Assistant.",
     sev_critical: "Critique",
@@ -270,6 +282,9 @@ const I18N = {
       "Los avisos se enviarán en cuanto se instale el Notification Center.",
     nc_master: "Enviar avisos al Notification Center",
     nc_types: "Tipos de aviso",
+    experimental: "Experimental",
+    exp_hint:
+      "Función experimental: sin probar y desactivada por defecto. Solo es visible porque las funciones experimentales están activadas.",
     nc_admin_only: "Solo los administradores pueden cambiar estos ajustes.",
     nc_unavailable: "La integración aún no proporciona datos del Notification Center. Reinicia Home Assistant.",
     sev_critical: "Crítico",
@@ -316,10 +331,20 @@ const CONFIG_DEFAULTS = {
   show_wlan: true,
   show_system: true,
   show_settings: true,
+  // Experimentell (Regeln 07): Standard aus.
+  show_experimental: false,
   // Farben (seit v1.0.0) sind hier absichtlich NICHT gelistet - ein
   // leerer/nicht gesetzter Wert bedeutet "Standardfarbe verwenden" (siehe
   // COLOR_CONFIG_KEYS/sanitizeColor() unten).
 };
+
+// Experimentelle Funktionen (Regeln 07) - schlüsselgleich zu
+// EXPERIMENTAL_FEATURES in const.py. Ungeprüft und standardmäßig ausgeblendet:
+// sichtbar nur, wenn in der Integration "experimental_enabled" UND in der
+// Karte "show_experimental" eingeschaltet sind. "label" ist ein I18N-Schlüssel.
+const EXPERIMENTAL = [
+  { key: "notification_center", since: "1.1.0", icon: "mdi:bell-outline", label: "acc_nc" },
+];
 
 function withDefaults(config) {
   return { ...CONFIG_DEFAULTS, ...(config || {}) };
@@ -826,6 +851,10 @@ const CARD_CSS = `
   .nc-row ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color, #727272); }
   .nc-row .grow { flex: 1 1 auto; font-size: 0.9em; color: var(--primary-text-color, #212121); }
   .nc-row.off .grow { color: var(--secondary-text-color, #727272); }
+  .badge-exp {
+    display: inline-block; padding: 1px 8px; border: 1px solid var(--fbe-color-warning);
+    border-radius: 999px; color: var(--fbe-color-warning); font-size: 0.78em; font-weight: 600;
+  }
   .nc-title { font-size: 0.85em; font-weight: 600; color: var(--secondary-text-color, #727272); margin-top: 4px; }
   .fbe-toast {
     position: absolute;
@@ -1028,6 +1057,7 @@ class FritzboxEreignisseCard extends HTMLElement {
       attrs.source,
       events.map((e) => e.id).join(","),
       JSON.stringify(attrs.notification_center || null),
+      this._config && this._config.show_experimental ? "exp" : "",
       [app.version, app.latest_version, app.update_available, app.checked_at, app.check_failed].join(","),
       this._hass ? this._hass.language : "",
       this._isAdmin() ? "admin" : "user",
@@ -1381,15 +1411,27 @@ class FritzboxEreignisseCard extends HTMLElement {
               }"></ha-switch>`) +
           `</div>`;
       });
-      meta = escapeHtml(nc.enabled ? this._t("nc_detected").split(":")[0] : "");
-      meta = "";
     }
+    // Orangefarbenes Badge: experimentelle Funktion (Regeln 07).
+    meta = `<span class="badge-exp" title="${escapeHtml(this._t("exp_hint"))}">${escapeHtml(
+      this._t("experimental")
+    )}</span>`;
     return this._accordion("nc", "mdi:bell-outline", this._t("acc_nc"), meta, body, "");
+  }
+
+  // Experimentelle Funktionen sichtbar? Nur wenn die Integration sie freigibt
+  // (Sensor-Attribut) UND die Karte "show_experimental" gesetzt hat.
+  _experimentalVisible() {
+    const nc = this._attrs().notification_center;
+    return !!(this._config && this._config.show_experimental && nc && nc.experimental);
   }
 
   _renderSettings() {
     this._rowsEl.innerHTML =
-      `<div class="fbe-settings">` + this._versionAccordion() + this._ncAccordion() + `</div>`;
+      `<div class="fbe-settings">` +
+      this._versionAccordion() +
+      (this._experimentalVisible() ? this._ncAccordion() : "") +
+      `</div>`;
 
     // Zustand der Akkordeons merken, OHNE neu zu zeichnen.
     this._rowsEl.querySelectorAll("details.settings-accordion").forEach((details) => {
@@ -1491,6 +1533,19 @@ const EDITOR_SCHEMA = [
     flatten: true,
     schema: [{ name: "read_only", selector: { boolean: {} } }],
   },
+  // Gruppe "Experimentell" (Regeln 07): nur vorhanden, wenn es experimentelle
+  // Funktionen gibt. Steht bewusst als letzte Gruppe.
+  ...(EXPERIMENTAL.length
+    ? [
+        {
+          type: "expandable",
+          name: "",
+          title: "Experimentell",
+          flatten: true,
+          schema: [{ name: "show_experimental", selector: { boolean: {} } }],
+        },
+      ]
+    : []),
 ];
 
 const EDITOR_LABELS = {
@@ -1509,6 +1564,7 @@ const EDITOR_LABELS = {
   max_rows: "Maximale Anzahl angezeigter Ereignisse",
   zoom: "Zoom (Skalierung der Karte)",
   read_only: "Nur lesen (alle Bedienelemente ausblenden)",
+  show_experimental: "Experimentelle Funktionen anzeigen",
   // Farben sind hier absichtlich NICHT gelistet - siehe COLOR_EDITOR_FIELDS
   // und FritzboxEreignisseCardEditor._buildColorSection().
 };
@@ -1566,6 +1622,7 @@ class FritzboxEreignisseCardEditor extends HTMLElement {
       this._form.addEventListener("value-changed", (ev) => this._valueChanged(ev));
       this._form.schema = EDITOR_SCHEMA;
       this._form.computeLabel = computeEditorLabel;
+      this._form.computeHelper = (schema) => this._computeHelper(schema);
       this.appendChild(this._form);
     }
     this._form.hass = this._hass;
@@ -1579,6 +1636,16 @@ class FritzboxEreignisseCardEditor extends HTMLElement {
       this.appendChild(this._colorSection);
     }
     this._updateColorSection();
+  }
+
+  // Hinweistext zur Gruppe "Experimentell": ungeprüft, Anzahl, Namen.
+  _computeHelper(schema) {
+    if (schema.name !== "show_experimental") return "";
+    const names = EXPERIMENTAL.map((feature) => translate(this._hass, feature.label)).join(", ");
+    return (
+      `Ungeprüfte Funktionen (${EXPERIMENTAL.length}): ${names}. Sie sind ausgeblendet, bis du sie hier ` +
+      `UND in den Optionen der Integration einschaltest. Danach hat jede Funktion einen eigenen Schalter (Standard aus).`
+    );
   }
 
   _updateVersionBlock() {
@@ -1771,7 +1838,7 @@ if (!window.customCards.some((card) => card.type === "fritzbox-ereignisse-card")
     type: "fritzbox-ereignisse-card",
     name: "FRITZ!Box Ereignisse",
     description:
-      "Zeigt das FRITZ!Box-Ereignisprotokoll als durchsuchbare, nach Kategorie filterbare Liste - inkl. Versionsanzeige, Notification-Center-Schaltern und konfigurierbarer Farben.",
+      "Zeigt das FRITZ!Box-Ereignisprotokoll als durchsuchbare, nach Kategorie filterbare Liste - inkl. Versionsanzeige und konfigurierbarer Farben. Experimentelle Funktionen (Notification Center) sind ausgeblendet, bis sie ausdrücklich eingeschaltet werden.",
     preview: false,
   });
   // eslint-disable-next-line no-console

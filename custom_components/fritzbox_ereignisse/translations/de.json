@@ -40,13 +40,23 @@
           "event_limit_type": "Modus",
           "max_events": "Anzahl gespeicherter Ereignisse",
           "max_event_days": "Anzahl Tage gespeicherter Ereignisse",
-          "nc_enabled": "Meldungen an das Notification Center senden",
-          "nc_types": "Gesendete Meldungsarten"
+          "experimental_enabled": "Experimentelle Funktionen anzeigen"
         },
         "data_description": {
           "event_limit_type": "Legt fest, ob die Verlaufstiefe nach Anzahl oder nach Alter (Tage) begrenzt wird.",
           "max_events": "Nur wirksam im Modus \"Anzahl Ereignisse\".",
           "max_event_days": "Nur wirksam im Modus \"Anzahl Tage\".",
+          "experimental_enabled": "Schaltet ungeprüfte Funktionen frei (derzeit: Notification Center). Ausgeschaltet bleiben sie ausgeblendet und senden nichts. Nach dem Speichern erscheint ein weiterer Schritt mit deren Einstellungen."
+        }
+      },
+      "experimental": {
+        "title": "Experimentelle Funktionen",
+        "description": "Diese Funktionen sind ungeprüft. Jede hat einen eigenen Schalter, der standardmäßig aus ist.",
+        "data": {
+          "nc_enabled": "Meldungen an das Notification Center senden",
+          "nc_types": "Gesendete Meldungsarten"
+        },
+        "data_description": {
           "nc_enabled": "Hauptschalter. Ist das Notification Center nicht installiert, passiert nichts.",
           "nc_types": "Nur wirksam, wenn der Hauptschalter an ist. Telefonie und WLAN sind standardmäßig aus, weil dort viele Einträge entstehen."
         }

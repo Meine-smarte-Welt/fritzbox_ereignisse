@@ -1,4 +1,4 @@
-# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 92a92c75fe1ebc345a644069f84b250c5f08a8b2dbbd29757fa514324e19194d
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 81b7fc91c543418d2e72bbe0b16db1efec83b867386f85f5958e2a718de5fdb8
 """Brücke zum optionalen Notification Center (Schnittstelle Schema 1).
 
 Identisch in allen Integrationen. Nur aus dem Event-Loop aufrufen.
@@ -24,6 +24,12 @@ SEVERITIES = ("critical", "warning", "info", "ok")
 LANGUAGES = ("de", "en", "nl", "fr", "es")
 OPT_ENABLED = "nc_enabled"
 OPT_TYPES = "nc_types"
+# Regeln 07: Die Anbindung gilt bis zur Prüfung gegen ein echtes Notification
+# Center als experimentell. Standard aus; die Brücke sendet nur, wenn
+# ``experimental_enabled`` UND ``nc_enabled`` an sind. Nach Thorstens
+# Bestätigung: ``OPT_ENABLED_DEFAULT = True`` und die zweite Bedingung entfällt.
+OPT_EXPERIMENTAL = "experimental_enabled"
+OPT_ENABLED_DEFAULT = False
 
 StateProvider = Callable[[], dict[str, list[dict[str, Any]]]]
 
@@ -60,8 +66,16 @@ class NotificationBridge:
 
     # --- Zustand -----------------------------------------------------
     @property
+    def experimental_enabled(self) -> bool:
+        """Hauptschalter für experimentelle Funktionen (Regeln 07, Standard aus)."""
+        return bool(self.entry.options.get(OPT_EXPERIMENTAL, False))
+
+    @property
     def master_enabled(self) -> bool:
-        return bool(self.entry.options.get(OPT_ENABLED, True))
+        return (
+            bool(self.entry.options.get(OPT_ENABLED, OPT_ENABLED_DEFAULT))
+            and self.experimental_enabled
+        )
 
     def type_enabled(self, type_: str) -> bool:
         item = self._catalog.get(type_)
@@ -80,6 +94,7 @@ class NotificationBridge:
         order = {s: i for i, s in enumerate(SEVERITIES)}
         types = sorted(self._catalog.values(), key=lambda t: order[t["severity"]])
         return {
+            "experimental": self.experimental_enabled,
             "available": self.available,
             "enabled": self.master_enabled,
             "types": [
@@ -119,6 +134,8 @@ class NotificationBridge:
     # --- Senden ------------------------------------------------------
     @callback
     def async_register(self) -> None:
+        if not self.experimental_enabled:
+            return  # Regeln 07: experimentell aus = Backend still
         self.hass.bus.async_fire(
             EVENT_REGISTER,
             {
@@ -178,6 +195,8 @@ class NotificationBridge:
     @callback
     def async_sync(self) -> None:
         """Ausgangszustand melden und das NC abgleichen lassen."""
+        if not self.experimental_enabled:
+            return  # Regeln 07: experimentell aus = Backend still
         active = self._provider() if self._provider else {}
         for type_, item in self._catalog.items():
             if not item.get("resolvable", True):

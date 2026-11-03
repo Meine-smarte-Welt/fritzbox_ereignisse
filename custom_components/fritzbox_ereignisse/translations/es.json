@@ -40,13 +40,23 @@
           "event_limit_type": "Modo",
           "max_events": "Número de eventos guardados",
           "max_event_days": "Número de días de eventos guardados",
-          "nc_enabled": "Enviar avisos al Notification Center",
-          "nc_types": "Tipos de aviso enviados"
+          "experimental_enabled": "Mostrar funciones experimentales"
         },
         "data_description": {
           "event_limit_type": "Define si la profundidad del historial se limita por número o por antigüedad (días).",
           "max_events": "Solo activo en el modo «Número de eventos».",
           "max_event_days": "Solo activo en el modo «Número de días».",
+          "experimental_enabled": "Activa funciones sin probar (actualmente: Notification Center). Desactivadas, permanecen ocultas y no envían nada. Tras guardar aparece otro paso con sus ajustes."
+        }
+      },
+      "experimental": {
+        "title": "Funciones experimentales",
+        "description": "Estas funciones no están probadas. Cada una tiene su propio interruptor, desactivado por defecto.",
+        "data": {
+          "nc_enabled": "Enviar avisos al Notification Center",
+          "nc_types": "Tipos de aviso enviados"
+        },
+        "data_description": {
           "nc_enabled": "Interruptor principal. Sin Notification Center instalado no ocurre nada.",
           "nc_types": "Solo activo si el interruptor principal está activado. Telefonía y Wi-Fi están desactivados por defecto, porque generan muchas entradas."
         }

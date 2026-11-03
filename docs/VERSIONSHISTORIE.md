@@ -2,7 +2,7 @@
 
 Zurück zur [README](../README.md).
 
-- **1.1.0**: Behebt die Issues #1 und #2, sendet Meldungen ans Notification Center, zeigt die Version samt Update-Hinweis an und bringt die Karte in fünf Sprachen. Details: [Release Note](../RELEASE_NOTES_v1.1.0.md).
+- **1.1.0**: Bearbeitet die Issues #1, #2 und #3 und übernimmt Pull Request #4 (Schnellinstallations-Knopf und HACS-Badge in den READMEs, Dank an DavidFrings). #1: zusätzlicher Abrufweg über HTTPS und TR-064-Port, Host-Eingaben mit Schema oder Port werden bereinigt, die Struktur der `query.lua`-Antwort wird (ohne Inhalte) ins Debug-Log geschrieben. Einträge haben jetzt immer eine eindeutige `id`; die Nummer der FRITZ!Box steht zusätzlich in `code`. #2 und #3: Karte mit Rückfall-Laden und Absicherung gegen Doppelladen; der Sensor zeichnet die großen Attribute nicht mehr auf (Recorder-Warnung). Neu: Meldungen ans Notification Center (jetzt **experimentell**, standardmäßig aus, siehe [EXPERIMENTELL.md](../EXPERIMENTELL.md)), Versionsanzeige samt Update-Hinweis und die Karte in fünf Sprachen. Die Ursache von #2 und #3 ließ sich nicht nachstellen; ob #1 behoben ist, ist auf echter Hardware nicht bestätigt. Details: [Releases](https://github.com/Meine-smarte-Welt/fritzbox_ereignisse/releases).
 
 - **1.0.0** (erste offizielle Version): eigenes Marken-Icon
   (`brand/icon.png`, `brand/logo.png`, siehe [Icon](#icon));

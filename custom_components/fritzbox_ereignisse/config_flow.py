@@ -1,4 +1,4 @@
-# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 2271aa2d4f5f0bc7feae9144198aa11570ee4793edf66a6bb60ea22476d90fa7
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 3f292c7b0e9ee82b8b7792ae801be9efd4a1bf007b08b05afb31e0b464b601d3
 """Config flow for fritzbox_ereignisse."""
 
 from __future__ import annotations
@@ -43,7 +43,13 @@ from .const import (
     VERSION,
 )
 from .nc_catalog import NC_CATALOG
-from .notification_bridge import OPT_ENABLED, OPT_TYPES, SEVERITIES
+from .notification_bridge import (
+    OPT_ENABLED,
+    OPT_ENABLED_DEFAULT,
+    OPT_EXPERIMENTAL,
+    OPT_TYPES,
+    SEVERITIES,
+)
 from .update_check import format_update_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -121,7 +127,7 @@ def _nc_schema_dict(current_options: Mapping[str, Any]) -> dict[Any, Any]:
     ]
     return {
         vol.Optional(
-            OPT_ENABLED, default=bool(current_options.get(OPT_ENABLED, True))
+            OPT_ENABLED, default=bool(current_options.get(OPT_ENABLED, OPT_ENABLED_DEFAULT))
         ): selector.BooleanSelector(),
         vol.Optional(OPT_TYPES, default=enabled_now): selector.SelectSelector(
             selector.SelectSelectorConfig(
@@ -138,7 +144,7 @@ def _parse_nc_input(user_input: Mapping[str, Any]) -> dict[str, Any]:
     """Notification-Center-Felder in das Optionen-Format der Brücke umwandeln."""
     selected = set(user_input.get(OPT_TYPES, []))
     return {
-        OPT_ENABLED: bool(user_input.get(OPT_ENABLED, True)),
+        OPT_ENABLED: bool(user_input.get(OPT_ENABLED, OPT_ENABLED_DEFAULT)),
         OPT_TYPES: {item["type"]: item["type"] in selected for item in NC_CATALOG},
     }
 
@@ -245,7 +251,9 @@ class FritzBoxEreignisseConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_EVENT_LIMIT_TYPE: DEFAULT_EVENT_LIMIT_TYPE,
                 CONF_MAX_EVENTS: DEFAULT_MAX_EVENTS,
                 CONF_MAX_EVENT_DAYS: DEFAULT_MAX_EVENT_DAYS,
-                OPT_ENABLED: True,
+                # Regeln 07: Experimentelles ist standardmäßig aus.
+                OPT_EXPERIMENTAL: False,
+                OPT_ENABLED: OPT_ENABLED_DEFAULT,
                 OPT_TYPES: {
                     item["type"]: bool(item.get("enabled_default", True)) for item in NC_CATALOG
                 },
@@ -312,17 +320,37 @@ class FritzBoxEreignisseConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class FritzBoxEreignisseOptionsFlowHandler(OptionsFlowWithReload):
-    """Handle a fritzbox_ereignisse options flow (Verlaufstiefe)."""
+    """Handle a fritzbox_ereignisse options flow.
+
+    Schritt 1 (``init``): Verlaufstiefe und Hauptschalter für experimentelle
+    Funktionen (Regeln 07, Standard aus). Schritt 2 (``experimental``) gibt es
+    nur bei eingeschaltetem Hauptschalter und enthält die Felder der
+    experimentellen Funktionen (derzeit: Notification Center).
+    """
+
+    def __init__(self) -> None:
+        """Init."""
+        self._base: dict[str, Any] = {}
+
+    def _stored_nc_options(self) -> dict[str, Any]:
+        """Gespeicherte Notification-Center-Optionen unverändert weitergeben."""
+        options = self.config_entry.options
+        return {key: options[key] for key in (OPT_ENABLED, OPT_TYPES) if key in options}
 
     @override
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manage the single options-flow step."""
+        """Verlaufstiefe und Hauptschalter für experimentelle Funktionen."""
         if user_input is not None:
-            return self.async_create_entry(
-                data={**_parse_event_limit_input(user_input), **_parse_nc_input(user_input)}
-            )
+            self._base = {
+                **_parse_event_limit_input(user_input),
+                OPT_EXPERIMENTAL: bool(user_input.get(OPT_EXPERIMENTAL, False)),
+            }
+            if self._base[OPT_EXPERIMENTAL]:
+                return await self.async_step_experimental()
+            # Experimente aus: Einstellungen bleiben gespeichert, wirken aber nicht.
+            return self.async_create_entry(data={**self._base, **self._stored_nc_options()})
 
         runtime = getattr(self.config_entry, "runtime_data", None)
         update_info = (
@@ -335,8 +363,23 @@ class FritzBoxEreignisseOptionsFlowHandler(OptionsFlowWithReload):
             data_schema=vol.Schema(
                 {
                     **_event_limit_schema_dict(self.config_entry.options),
-                    **_nc_schema_dict(self.config_entry.options),
+                    vol.Optional(
+                        OPT_EXPERIMENTAL,
+                        default=bool(self.config_entry.options.get(OPT_EXPERIMENTAL, False)),
+                    ): selector.BooleanSelector(),
                 }
             ),
             description_placeholders={"version": VERSION, "update_info": update_info},
+        )
+
+    async def async_step_experimental(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Felder der experimentellen Funktionen (nur bei eingeschaltetem Hauptschalter)."""
+        if user_input is not None:
+            return self.async_create_entry(data={**self._base, **_parse_nc_input(user_input)})
+
+        return self.async_show_form(
+            step_id="experimental",
+            data_schema=vol.Schema(_nc_schema_dict(self.config_entry.options)),
         )

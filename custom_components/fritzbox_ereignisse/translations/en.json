@@ -40,13 +40,23 @@
           "event_limit_type": "Mode",
           "max_events": "Number of stored events",
           "max_event_days": "Number of days of stored events",
-          "nc_enabled": "Send messages to the Notification Center",
-          "nc_types": "Message types sent"
+          "experimental_enabled": "Show experimental features"
         },
         "data_description": {
           "event_limit_type": "Whether the retention depth is limited by count or by age (days).",
           "max_events": "Only used in \"Number of events\" mode.",
           "max_event_days": "Only used in \"Number of days\" mode.",
+          "experimental_enabled": "Enables untested features (currently: Notification Center). While off, they stay hidden and send nothing. After saving, another step with their settings appears."
+        }
+      },
+      "experimental": {
+        "title": "Experimental features",
+        "description": "These features are untested. Each has its own switch, which is off by default.",
+        "data": {
+          "nc_enabled": "Send messages to the Notification Center",
+          "nc_types": "Message types sent"
+        },
+        "data_description": {
           "nc_enabled": "Main switch. Nothing happens if the Notification Center is not installed.",
           "nc_types": "Only used when the main switch is on. Telephony and Wi-Fi are off by default because they produce many entries."
         }

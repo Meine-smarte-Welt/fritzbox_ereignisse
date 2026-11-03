@@ -1,4 +1,4 @@
-# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 6719c1f5d179ce58c348abb731596880c4c75e284d45af0163e61d4c7bb1348f
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): ce0ca7811e906dc4a6cced9c79dd7df1d2c4e0a829b40ef65ba3828660f4ffb5
 """Fetch + parse the FRITZ!Box event log ("Ereignisse").
 
 Es gibt inzwischen DREI Wege zum selben Protokoll, das die FRITZ!Box-
@@ -161,6 +161,25 @@ Fehler statt als leeres Protokoll. Außerdem meldet der Koordinator seit
 v1.1.0 neue Einträge und Verbindungsverlust ans Notification Center
 (``notification_bridge.py``). Nicht an echter Hardware geprüft.
 
+Nachtrag zu v1.1.0 (Issue #1, Kommentar zu FRITZ!OS 8.25) - drei weitere
+Korrekturen:
+
+1. Host-Aufbau: Der Host wird von Schema, Pfad und Port befreit
+   (:func:`_normalize_host`), nur echte IPv6-Adressen bekommen eckige
+   Klammern. Zuvor löste jede Adresse mit ``:`` den Fehler "Invalid IPv6
+   URL" aus. ``urljoin`` liegt jetzt innerhalb des ``try``; ein
+   ungültiger Ursprung überspringt nur sich selbst. Zusätzlicher letzter
+   Ursprung: HTTP am TR-064-Port (laut Meldung liefert er dasselbe XML).
+2. Eindeutiger Schlüssel: Die ``id`` aus dem XML (bzw. ``ref`` aus
+   query.lua) bezeichnet offenbar die Meldungsart und wiederholt sich. Die
+   Ereignis-``id`` ist jetzt ein Hash aus Zeitstempel, Kennung und Text
+   (:func:`_make_ids_unique` unterscheidet zusätzlich völlig identische
+   Einträge). Die Kennung der Box bleibt als ``code`` erhalten. Dadurch
+   gelten neue Einträge einer bereits bekannten Art als neu.
+3. query.lua auf FRITZ!OS 8.25 liefert nur ``mq_log``, teils als leere
+   Liste. Der Weg fällt wie bisher auf XML zurück; das Debug-Log nennt jetzt
+   die Form der Antwort (ohne Inhalte), damit sich das Format klären lässt.
+
 Feature in v1.0.0 - Verlaufstiefe wahlweise nach Tagen statt nur Anzahl
 ---------------------------------------------------------------------
 Bisher (bis v0.4.0) wurde die Verlaufstiefe ausschließlich über eine feste
@@ -183,6 +202,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
+import ipaddress
 import logging
 import re
 from typing import Any, Final
@@ -343,6 +363,11 @@ class FritzEvent:
     timestamp: datetime | None
     raw_date: str
     message: str
+    # Kennung, die die FRITZ!Box selbst mitliefert (XML ``id``, query.lua
+    # ``ref``). Sie bezeichnet laut Issue #1 offenbar die MELDUNGSART, nicht den
+    # einzelnen Eintrag, und ist daher NICHT eindeutig. ``id`` ist seit v1.1.0
+    # ein eigener, eindeutiger Schlüssel; die Kennung der Box steht in ``code``.
+    code: str | None = None
 
     @property
     def group_label(self) -> str:
@@ -360,6 +385,7 @@ class FritzEvent:
             "date": self.timestamp.isoformat() if self.timestamp else None,
             "date_display": self.raw_date,
             "message": self.message,
+            "code": self.code,
         }
 
     @classmethod
@@ -377,13 +403,18 @@ class FritzEvent:
         time_part = (fields.get("time") or "").strip()
         raw_date = f"{date_part} {time_part}".strip()
         timestamp = _parse_datetime(date_part, time_part)
-        event_id = (fields.get("id") or "").strip() or _synthetic_id(raw_date, message)
+        # Issue #1 (Nachtrag, v1.1.0): Die ``id`` der Box wiederholt sich
+        # (z. B. dieselbe Zahl für jede "Anmeldung des Benutzers ..."). Als
+        # Schlüssel taugt sie nur zusammen mit Zeitstempel und Text; sonst
+        # gälten neue Einträge einer bekannten Meldungsart nie als neu.
+        code = (fields.get("id") or "").strip()
         return cls(
-            id=event_id,
+            id=_synthetic_id(f"{raw_date}|{code}", message),
             group=group,
             timestamp=timestamp,
             raw_date=raw_date,
             message=message,
+            code=code or None,
         )
 
     @classmethod
@@ -430,11 +461,13 @@ class FritzEvent:
         ref = str(fields.get("ref") or "").strip()
         group = _derive_group(None, message)
         return cls(
-            id=ref or _synthetic_id(raw_date or message, message),
+            # ``ref`` allein ist nicht als eindeutig belegt (siehe ``code``).
+            id=_synthetic_id(f"{raw_date or message}|{ref}", message),
             group=group,
             timestamp=timestamp,
             raw_date=raw_date,
             message=message,
+            code=ref or None,
         )
 
 
@@ -482,6 +515,74 @@ def _synthetic_id(raw_date: str, message: str) -> str:
     """
     digest = hashlib.sha1(f"{raw_date}|{message}".encode("utf-8")).hexdigest()
     return digest[:12]
+
+
+def _make_ids_unique(events: list[FritzEvent]) -> list[FritzEvent]:
+    """Identische Einträge (gleicher Schlüssel) unterscheidbar machen.
+
+    Zwei Meldungen mit gleichem Zeitstempel, gleicher Kennung und gleichem Text
+    erzeugen denselben Hash. Würden sie zusammenfallen, ginge die zweite für
+    die Erkennung neuer Einträge verloren. Das erste Vorkommen behält seine
+    ``id``, jedes weitere bekommt ``-1``, ``-2`` ... angehängt. Da die
+    Einträge untereinander identisch sind, ist ihre Reihenfolge belanglos: die
+    Menge der IDs bleibt zwischen zwei Abrufen stabil, solange sich die Box
+    nicht ändert, und ein neuer, identischer Eintrag liefert genau eine neue ID.
+    """
+    seen: dict[str, int] = {}
+    for event in events:
+        count = seen.get(event.id, 0)
+        seen[event.id] = count + 1
+        if count:
+            event.id = f"{event.id}-{count}"
+    return events
+
+
+def _normalize_host(address: object) -> str:
+    """Host einer FRITZ!Box-Adresse für den Einsatz in einer URL.
+
+    Entfernt Schema, Pfad und Port. Nur echte IPv6-Adressen werden in eckige
+    Klammern gesetzt (Issue #1, Nachtrag: bisher jede Adresse mit ``:``, was
+    bei ``host:port`` oder ``https://host`` zu "Invalid IPv6 URL" führte).
+    Liefert einen leeren String, wenn kein Host erkennbar ist.
+    """
+    host = re.sub(r"^[a-z][a-z0-9+.-]*://", "", str(address or "").strip(), flags=re.IGNORECASE)
+    host = re.split(r"[/?#]", host, maxsplit=1)[0]
+    if host.startswith("["):
+        end = host.find("]")
+        bare = host[1:end] if end > 0 else host.strip("[]")
+    else:
+        try:
+            ipaddress.IPv6Address(host.split("%", 1)[0])
+        except ValueError:
+            bare = host.split(":", 1)[0]  # host:port -> host
+        else:
+            bare = host
+    bare = bare.strip()
+    if not bare:
+        return ""
+    try:
+        ipaddress.IPv6Address(bare.split("%", 1)[0])
+    except ValueError:
+        return bare
+    return "[" + bare.replace("%", "%25") + "]"
+
+
+def _describe_shape(value: object, _depth: int = 0) -> str:
+    """Form einer JSON-Antwort für das Debug-Log: Typen, Längen, Schlüsselnamen.
+
+    Enthält nie Werte (also auch keine Meldungstexte).
+    """
+    if _depth > 3:
+        return "…"
+    if isinstance(value, dict):
+        inner = ", ".join(
+            f"{key}: {_describe_shape(item, _depth + 1)}" for key, item in list(value.items())[:8]
+        )
+        return "{" + inner + "}"
+    if isinstance(value, list):
+        first = _describe_shape(value[0], _depth + 1) if value else ""
+        return f"Liste[{len(value)}]" + (f" aus {first}" if first else "")
+    return type(value).__name__
 
 
 class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
@@ -539,6 +640,15 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         return events
 
     def _fetch(self) -> list[FritzEvent]:
+        """Fetch the log via the first working path, with unique entry ids.
+
+        BLOCKING - run in an executor job. Siehe :meth:`_fetch_raw` für die
+        Reihenfolge der Wege; hier werden zusätzlich identische Einträge
+        (gleiche Sekunde, gleicher Text) mit unterscheidbaren ``id`` versehen.
+        """
+        return _make_ids_unique(self._fetch_raw())
+
+    def _fetch_raw(self) -> list[FritzEvent]:
         """Try query.lua, then the structured XML path, then plain text.
 
         BLOCKING - run in an executor job. Returns whichever path succeeds
@@ -607,10 +717,13 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         payload = response.json()
         entries = _find_log_entries(payload)
         if entries is None:
+            # Nur die Form der Antwort (Typen, Längen, Schlüsselnamen), nie
+            # Meldungstexte. Hilft bei Firmware-Ständen (z. B. FRITZ!OS 8.25),
+            # bei denen "mq_log" leer ist oder anders aufgebaut ist.
             _LOGGER.debug(
                 "Ereignisse: query.lua-Antwort ohne erkennbare Eintragsliste"
-                " (Antwort-Schlüssel: %s)",
-                sorted(payload.keys()) if isinstance(payload, dict) else type(payload).__name__,
+                " (Form der Antwort: %s)",
+                _describe_shape(payload),
             )
             return None
         return [
@@ -638,8 +751,11 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         # /devicelog.lua nur eine HTML-Fehlerseite.
         last_error: Exception | None = None
         for origin in self._log_origins(fc):
-            url = urljoin(origin, path)
             try:
+                # Issue #1 (Nachtrag): ``urljoin`` liegt innerhalb des ``try``.
+                # Eine ungültige Basis-URL (z. B. "Invalid IPv6 URL") darf nur
+                # diesen einen Ursprung überspringen, nicht den ganzen XML-Weg.
+                url = urljoin(origin, path)
                 events = _parse_log_xml(_download_log_xml(fc.session, url))
             except Exception as ex:  # noqa: BLE001 - nächster Ursprung / Rückfall
                 last_error = ex
@@ -661,13 +777,28 @@ class FritzEventsCoordinator(DataUpdateCoordinator[list[FritzEvent]]):
         return None
 
     def _log_origins(self, fc: Any) -> list[str]:
-        """Basis-URLs für den devicelog-Abruf: HTTPS (SecurityPort), dann HTTP."""
-        host = str(fc.address)
-        if ":" in host and not host.startswith("["):
-            host = f"[{host}]"  # IPv6-Literal
-        origins = [f"https://{host}:{self._get_security_port(fc)}"]
-        origins.append(FritzHttp(fc).router_url)
-        return origins
+        """Basis-URLs für den devicelog-Abruf.
+
+        Reihenfolge: HTTPS am Sicherheits-Port, HTTP am Web-UI-Port (80/443
+        laut ``FritzHttp``), HTTP am TR-064-Port. Der Host wird zuvor von
+        Schema, Pfad und Port befreit; nur echte IPv6-Adressen bekommen eckige
+        Klammern (Issue #1, Nachtrag).
+        """
+        origins: list[str] = []
+        host = _normalize_host(getattr(fc, "address", ""))
+        if host:
+            origins.append(f"https://{host}:{self._get_security_port(fc)}")
+        try:
+            origins.append(FritzHttp(fc).router_url)
+        except Exception as ex:  # noqa: BLE001 - dieser Ursprung entfällt nur
+            _LOGGER.debug(
+                "Ereignisse: Web-UI-Adresse nicht ermittelbar (%s: %s)", type(ex).__name__, ex
+            )
+        port = getattr(fc, "port", None)
+        if host and isinstance(port, int) and 0 < port < 65536:
+            origins.append(f"http://{host}:{port}")
+        # Doppelte Ursprünge (z. B. identische Adressen) nur einmal versuchen.
+        return list(dict.fromkeys(origins))
 
     def _get_security_port(self, fc: Any) -> int:
         """Sicherheits-Port (HTTPS) der Box per TR-064; Standard 49443 als Rückfall."""

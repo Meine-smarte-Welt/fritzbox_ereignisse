@@ -40,13 +40,23 @@
           "event_limit_type": "Modus",
           "max_events": "Aantal opgeslagen gebeurtenissen",
           "max_event_days": "Aantal dagen aan opgeslagen gebeurtenissen",
-          "nc_enabled": "Meldingen naar het Notification Center sturen",
-          "nc_types": "Verzonden meldingstypen"
+          "experimental_enabled": "Experimentele functies tonen"
         },
         "data_description": {
           "event_limit_type": "Bepaalt of de historiediepte wordt beperkt op aantal of op leeftijd (dagen).",
           "max_events": "Alleen actief in de modus \"Aantal gebeurtenissen\".",
           "max_event_days": "Alleen actief in de modus \"Aantal dagen\".",
+          "experimental_enabled": "Schakelt ongetest functies vrij (momenteel: Notification Center). Uitgeschakeld blijven ze verborgen en sturen niets. Na het opslaan verschijnt een extra stap met hun instellingen."
+        }
+      },
+      "experimental": {
+        "title": "Experimentele functies",
+        "description": "Deze functies zijn ongetest. Elke functie heeft een eigen schakelaar, die standaard uit staat.",
+        "data": {
+          "nc_enabled": "Meldingen naar het Notification Center sturen",
+          "nc_types": "Verzonden meldingstypen"
+        },
+        "data_description": {
           "nc_enabled": "Hoofdschakelaar. Zonder geïnstalleerd Notification Center gebeurt er niets.",
           "nc_types": "Alleen actief als de hoofdschakelaar aan staat. Telefonie en WLAN staan standaard uit, omdat daar veel meldingen ontstaan."
         }

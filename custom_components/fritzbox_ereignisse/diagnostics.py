@@ -1,4 +1,4 @@
-# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): d363935a69c6af1871db50f79b360ddb0bf14904bece3d5e52781ab101e539ce
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 0ada18c583a83e65bad330cc27d51a72c2bab700ebe90a9a5d0aee696d890b3e
 """Anonymisierter Diagnose-Download (Design-Master, Abschnitt 13)."""
 
 from __future__ import annotations
@@ -43,6 +43,7 @@ async def async_get_config_entry_diagnostics(
                 if key not in ("nc_enabled", "nc_types")
             },
         },
+        "experimental_enabled": snapshot["experimental"],
         "version": VERSION,
         "update": runtime.update_checker.as_dict(),
         "events": {

@@ -1,4 +1,4 @@
-# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 365df7541c77c357a1c3f71ef6ed4f7cb87043333816d74fdc9bbd6d525550ba
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 9bffa274a3f3027256b09c2e2dc7479a7ea9969f0a8d69f1c16eb8fa9f742c26
 """Sensor platform for fritzbox_ereignisse."""
 
 from __future__ import annotations
@@ -104,5 +104,14 @@ class FritzBoxEreignisseSensor(CoordinatorEntity[FritzEventsCoordinator], Sensor
             # mit Update-Hinweis und Stand des Notification Centers für die
             # Einstellungen in der Karte.
             "app": self._runtime_data.update_checker.as_dict(),
-            "notification_center": self._runtime_data.nc.snapshot(),
+            # Experimentell (Regeln 07): ohne Hauptschalter nur das Flag, damit
+            # die Karte nichts davon zeigt.
+            "notification_center": self._notification_center_attribute(),
         }
+
+    def _notification_center_attribute(self) -> dict[str, Any]:
+        """Stand des Notification Centers, nur bei eingeschalteten Experimenten."""
+        nc = self._runtime_data.nc
+        if not nc.experimental_enabled:
+            return {"experimental": False}
+        return nc.snapshot()

@@ -1,4 +1,4 @@
-# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 4df5ae598c6d8200c07c4059c98706f175bcf6d283d63c8d0b5f4b2c46ae409b
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 5457f7cad48d7cc75ee82d7edd026794e87bf913da6b57258ad9a884d7b4b29b
 """WebSocket-API der Karte (seit v1.1.0): Schalter fürs Notification Center.
 
 Nur ``fritzbox_ereignisse/action`` - schreibend, daher ausschließlich für
@@ -75,6 +75,16 @@ async def ws_action(
     if action == ACTION_CHECK_UPDATE:
         await runtime.update_checker.async_check()
         connection.send_result(msg["id"], {"ok": True})
+        return
+
+    # Regeln 07: Das Notification Center ist experimentell. Solange der
+    # Hauptschalter aus ist, gibt es hier keine schreibenden Aktionen.
+    if not runtime.nc.experimental_enabled:
+        connection.send_error(
+            msg["id"],
+            websocket_api.ERR_NOT_ALLOWED,
+            "Experimentelle Funktion nicht aktiviert (experimental feature not enabled)",
+        )
         return
 
     if "enabled" not in msg:

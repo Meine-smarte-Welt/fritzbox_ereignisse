@@ -4,13 +4,19 @@
 
 Home Assistant integration that shows the FRITZ!Box **event log** ("System → Events") as a sensor and dashboard card. New entries can also be sent to the Notification Center. Sister integration of [FRITZ!Box Calls](https://github.com/Meine-smarte-Welt/fritzbox_anrufe).
 
-**Version 1.1.0.** For the test status see [Known limitations](#known-limitations). The Dutch, French and Spanish texts are machine-translated; corrections are welcome.
+<p>
+  <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Meine-smarte-Welt&amp;repository=fritzbox_ereignisse&amp;category=integration"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open the repository in Home Assistant" height="32"></a>
+</p>
+
+![HACS](https://img.shields.io/badge/HACS-Custom-orange)
+
+**Version 1.1.0.** For the test status see [Known limitations](#known-limitations). The Dutch, French and Spanish texts are machine-translated; corrections are welcome. The Notification Center is **experimental** and off by default (see [EXPERIMENTELL.md](EXPERIMENTELL.md), German).
 
 ## Features
 
 - Sensor with all event log entries, categories as in the FRITZ!Box (telephony, internet connection, USB devices, Wi-Fi, system)
 - Dashboard card with tabs, search, zoom, `read_only` and configurable colours
-- Messages to the Notification Center (schema 1), each message type switchable
+- Messages to the Notification Center (schema 1), each message type switchable (experimental, off by default)
 - Version display with a hint about new GitHub releases (checked every 12 hours)
 - Five languages: German, English, Dutch, French, Spanish
 
@@ -64,13 +70,15 @@ This integration provides no services of its own.
 
 ## Events
 
-`fritzbox_ereignisse_new_event` is fired when a new entry appears in the log (payload: `entry_id`, `id`, `group`, `group_label`, `date`, `date_display`, `message`). Deliberately no event is fired on the first fetch after startup. Example: [`examples/automation_new_event.yaml`](examples/automation_new_event.yaml).
+`fritzbox_ereignisse_new_event` is fired when a new entry appears in the log (payload: `entry_id`, `id`, `code`, `group`, `group_label`, `date`, `date_display`, `message`). Deliberately no event is fired on the first fetch after startup. Example: [`examples/automation_new_event.yaml`](examples/automation_new_event.yaml). New in 1.1.0: `id` is now always unique; the original number from the FRITZ!Box is in `code` (if present).
 
 ## Sensors
 
-`sensor.fritzbox_ereignisse_ereignisse` (state = number of entries). Attributes: `events`, `groups`, `source` (`query`, `xml` or `text`), `app` (version, update status) and `notification_center`. The large attributes are **not** recorded in the database (fixes the recorder warning "state attributes exceed 16384 bytes").
+`sensor.fritzbox_ereignisse_ereignisse` (state = number of entries). Attributes: `events`, `groups`, `source` (`query`, `xml` or `text`), `app` (version, update status) and `notification_center`. The large attributes are **not** recorded in the database (fixes the recorder warning "state attributes exceed 16384 bytes"). `notification_center` only appears with `experimental: true` when experimental features are switched on.
 
 ## Notification Center
+
+> **Experimental.** This feature is hidden and off by default. To enable: Settings → Devices & services → FRITZ!Box Events → Configure → turn on "Experimental features", then enable the Notification Center in the next step. In the card, also turn on "Show experimental features" in the card editor. Before switching it off, disable the messages in the Notification Center; open messages are not closed when it is switched off. Details: [EXPERIMENTELL.md](EXPERIMENTELL.md) (German).
 
 If the Notification Center is installed, the integration sends messages using schema 1. Configure under "Configure" and in the card (gear → Notification Center, administrators only).
 
@@ -89,7 +97,7 @@ The version appears in three places: card → gear → "App version", at the top
 ## Settings
 
 - **History depth:** number of events (20–500, default 100) or number of days (1–90, default 30)
-- **Notification Center:** master switch and one row per message type
+- **Experimental features:** master switch (default off); only then the Notification Center appears (master switch and one row per message type)
 
 ## Security
 
@@ -97,11 +105,11 @@ Write actions of the card (Notification Center switches, "Check now") use a WebS
 
 ## Known limitations
 
-- **Not tested on a real FRITZ!Box.** Only simulated data was used (XML parser, Notification Center bridge). Please report whether issue #1 is fixed on your box (FRITZ!OS version and the `source` attribute).
-- Interaction with a real Notification Center has not been verified.
-- Issue #2 ("Custom element doesn't exist") could not be reproduced. The card is now additionally loaded through a fallback and is safe against being loaded twice. If it still fails: add the resource `/fritzbox_ereignisse_files/fritzbox-ereignisse-card.js` (type JavaScript module) manually and reload with Ctrl+F5.
+- **Not tested on a real FRITZ!Box.** Only simulated data was used (XML parser, shape of the query.lua response, Notification Center bridge). There is no feedback from real installations of this version yet. Please report whether issue #1 is fixed on your box (FRITZ!OS version, the `source` attribute and the debug log; it contains only types and field names, no contents).
+- Interaction with a real Notification Center has not been verified, which is why the feature is experimental.
+- Issue #2 ("Custom element doesn't exist") could not be reproduced. The card is now additionally loaded through a fallback and is safe against being loaded twice. If it still fails: add the resource `/fritzbox_ereignisse_files/fritzbox-ereignisse-card.js` (type JavaScript module) manually and reload with Ctrl+F5. Issue #3 (404 when loading the card) probably had the same cause: 1.1.0 was first only a pre-release, so HACS keeps offering 1.0.0. This is not confirmed.
 - With several FRITZ!Boxes the gear always switches the first entry.
-- The card was not exercised in a browser with test data, only syntax-checked.
+- The card was exercised in headless Chrome with test data, but not in a real Home Assistant.
 
 ## Troubleshooting
 
@@ -118,18 +126,18 @@ Every `.py`, `.js` and `.yaml` file carries a SHA-256 of the file from line 2 in
 |---|---|
 | `custom_components/fritzbox_ereignisse/icons.json` | `67da9e1131e789f9c2ad831d81f8a524564790995018e9f99ec7b786ce2248ec` |
 | `custom_components/fritzbox_ereignisse/manifest.json` | `ff522edb759c85195f495cba46f39cef141645568dd7116d250c1a7bff7b4b72` |
-| `custom_components/fritzbox_ereignisse/strings.json` | `4fe7b456dd2cc0662c3d20459fd637f26f305d5761ef722deef4426d796aed66` |
-| `custom_components/fritzbox_ereignisse/translations/de.json` | `4fe7b456dd2cc0662c3d20459fd637f26f305d5761ef722deef4426d796aed66` |
-| `custom_components/fritzbox_ereignisse/translations/en.json` | `dffe0880e487e99f1f615211ef0ccb70150ef807b561501c7820f5adc47e05a9` |
-| `custom_components/fritzbox_ereignisse/translations/es.json` | `e58bf729230fe91a1f25fb39f18bfbf7e97e69754c00243cef71a6047744655d` |
-| `custom_components/fritzbox_ereignisse/translations/fr.json` | `e48cc3a08a936c6a8c1021cbcfe52959a9527ef1e0bdbf3cde057a4645cf2b72` |
-| `custom_components/fritzbox_ereignisse/translations/nl.json` | `2ceb0276ac22409266b8c6af97ae885e4b275a10d2f99c4da223b820d7133713` |
+| `custom_components/fritzbox_ereignisse/strings.json` | `58c3dc20fba447321fa7544e555eed8502c7272e43ad8959429722d290c23faf` |
+| `custom_components/fritzbox_ereignisse/translations/de.json` | `58c3dc20fba447321fa7544e555eed8502c7272e43ad8959429722d290c23faf` |
+| `custom_components/fritzbox_ereignisse/translations/en.json` | `22781876e46fd9ed02be9eae843f2ad00953fd99eb988abaf6fe2329049558c0` |
+| `custom_components/fritzbox_ereignisse/translations/es.json` | `bb59e5dbc9805250afd699a11af3858633d2a954898c443c4674304217439db1` |
+| `custom_components/fritzbox_ereignisse/translations/fr.json` | `f3b6598bc1e48cd5dbb07282eb7c8b6dbc09eedfd84bb0be8913a9674a89d88b` |
+| `custom_components/fritzbox_ereignisse/translations/nl.json` | `b542facabf656ecf976ce14c185707deb4afbf2ae9c2f6e11e7c9171373cef09` |
 | `hacs.json` | `2fd69f483cbef3d0ddf94ed48b9e44b61002e02f266481c400c61bd8b1752890` |
 <!--/HASHES-->
 
 ## Version history
 
-See [docs/VERSIONSHISTORIE.md](docs/VERSIONSHISTORIE.md) (German) and [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md).
+See [docs/VERSIONSHISTORIE.md](docs/VERSIONSHISTORIE.md) (German) and the [releases](https://github.com/Meine-smarte-Welt/fritzbox_ereignisse/releases).
 
 ## License
 

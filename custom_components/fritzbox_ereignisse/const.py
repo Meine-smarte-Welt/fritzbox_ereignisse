@@ -1,9 +1,9 @@
-# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 3f409f69666f5df0afae51375cef8e90cfd62731661457b98c5a030419ee991f
+# SHA256 (Inhalt ab Zeile 2, d.h. dieser Datei ohne diese erste Zeile): 78e8ee5040aa853f723ee03e375d6d3a53224c53534b980b958d71dc7075aaa0
 """Constants for the FRITZ!Box Ereignisse integration."""
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Any, Final
 
 from homeassistant.const import Platform
 
@@ -17,6 +17,29 @@ GITHUB_REPO: Final = "Meine-smarte-Welt/fritzbox_ereignisse"
 GITHUB_RELEASES_URL: Final = f"https://github.com/{GITHUB_REPO}/releases"
 
 PLATFORMS: Final = [Platform.SENSOR]
+
+# --- Experimentelle Funktionen (Regeln 07) -----------------------------------
+#
+# Ungeprüfte Funktionen sind standardmäßig ausgeblendet und im Backend still.
+# Hauptschalter: Option ``experimental_enabled`` (Standard aus) und in der Karte
+# ``show_experimental`` (Standard aus). Jede experimentelle Funktion hat danach
+# einen eigenen Schalter (Standard aus). Die Registry steht schlüsselgleich in
+# der Karte (``EXPERIMENTAL``). Liste und Prüfschritte: EXPERIMENTELL.md.
+CONF_EXPERIMENTAL_ENABLED: Final = "experimental_enabled"
+EXPERIMENTAL_FEATURES: Final[tuple[dict[str, Any], ...]] = (
+    {
+        "key": "notification_center",
+        "since": "1.1.0",
+        "icon": "mdi:bell-outline",
+        "labels": {
+            "de": "Notification Center",
+            "en": "Notification Center",
+            "nl": "Notification Center",
+            "fr": "Notification Center",
+            "es": "Notification Center",
+        },
+    },
+)
 
 FRITZ_ATTR_SERIAL_NUMBER = "Serial"
 SERIAL_NUMBER = "serial_number"
